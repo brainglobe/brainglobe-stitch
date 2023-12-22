@@ -4,7 +4,7 @@ API
 math
 ----
 
-.. currentmodule:: mesoSPIM-stitcher.math
+.. currentmodule:: mesospim-stitcher.math
 
 .. autosummary::
     :toctree: api_generated
@@ -16,7 +16,7 @@ math
 greetings
 ---------
 
-.. currentmodule:: mesoSPIM-stitcher.greetings
+.. currentmodule:: mesospim-stitcher.greetings
 
 .. autosummary::
     :toctree: api_generated

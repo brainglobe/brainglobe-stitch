@@ -1,1 +1,1 @@
-# mesoSPIM-stitcher
+# mesospim-stitcher

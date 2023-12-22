@@ -20,7 +20,7 @@ autodoc_mock_imports = []
 # use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../.."))
 
-project = "mesoSPIM-stitcher"
+project = "mesospim_stitcher"
 copyright = "2023, Igor Tatarnikov"
 author = "Igor Tatarnikov"
 try:
@@ -86,7 +86,7 @@ exclude_patterns = [
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 html_theme = "pydata_sphinx_theme"
-html_title = "mesoSPIM-stitcher"
+html_title = "mesospim_stitcher"
 
 # Customize the theme
 html_theme_options = {
