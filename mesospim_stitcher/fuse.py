@@ -5,7 +5,9 @@ from shutil import rmtree
 
 import dask.array as da
 import h5py
+import numpy as np
 import zarr
+from mpi4py import MPI
 from numcodecs import Blosc
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_image
@@ -28,6 +30,12 @@ def fuse_image(
     grid_transforms = root.findall(
         ".//ViewTransform/[Name='Translation from Tile Configuration']/affine"
     )
+
+    if len(grid_transforms) == 0:
+        grid_transforms = root.findall(
+            ".//ViewTransform/[Name='Translation to Regular Grid']/affine"
+        )
+
     assert grid_transforms is not None, "No grid transforms found in XML file"
 
     z_scale_str = root.find(".//ViewTransform/[Name='calibration']/affine")
@@ -104,6 +112,16 @@ def fuse_image(
         x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
         new_image[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
 
+    try:
+        # write_ome_zarr(output_path, new_image, overwrite)
+        write_hdf5(output_path, new_image, overwrite)
+    except Exception as e:
+        raise e
+    finally:
+        input_file.close()
+
+
+def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
     if output_path.exists() and overwrite:
         rmtree(output_path)
     else:
@@ -116,7 +134,7 @@ def fuse_image(
     root = zarr.group(store=store)
     compressor = Blosc(cname="zstd", clevel=4, shuffle=Blosc.SHUFFLE)
     write_image(
-        image=new_image,
+        image=image,
         group=root,
         axes=[
             {"name": "z", "type": "space", "unit": "micrometer"},
@@ -131,7 +149,7 @@ def fuse_image(
             [{"type": "scale", "scale": [10.0, 41.6, 41.6]}],
         ],
         storage_options=dict(
-            chunks=(2, new_image.shape[1], new_image.shape[2]),
+            chunks=(2, image.shape[1], image.shape[2]),
             compressor=compressor,
         ),
     )
@@ -146,4 +164,92 @@ def fuse_image(
         ]
     }
 
-    input_file.close()
+
+def write_hdf5(output_path: Path, image: da, overwrite: bool):
+    subdivisions = np.array(
+        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
+    )
+    resolutions = np.array(
+        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
+    )
+
+    rank = MPI.COMM_WORLD.rank
+    #
+    # print(f"Rank {rank} starting to write")
+    f = h5py.File(output_path, "w")
+
+    f.create_dataset(
+        "s00/subdivisions",
+        data=subdivisions,
+        shape=subdivisions.shape,
+        dtype="uint16",
+    )
+    f.create_dataset(
+        "s00/resolutions",
+        data=resolutions,
+        shape=resolutions.shape,
+        dtype="uint16",
+    )
+
+    data_group: h5py.Group = f.create_group("t00000/s00")
+
+    orig_image = data_group.create_dataset(
+        "0/cells",
+        data=image,
+        chunks=(16, 32, 32),
+        dtype="uint16",
+        shape=image.shape,
+    )
+
+    image_shape = image.shape
+    x_split_size = image_shape[2] // 4
+    y_split_size = image_shape[1] // 3
+
+    x_borders = [
+        0,
+        x_split_size,
+        x_split_size * 2,
+        x_split_size * 3,
+        image_shape[2],
+    ]
+    y_borders = [0, y_split_size, y_split_size * 2, image_shape[1]]
+
+    x_start = x_borders[rank % 4]
+    x_end = x_borders[rank % 4 + 1]
+    y_start = y_borders[rank // 4]
+    y_end = y_borders[(rank // 4 + 1)]
+
+    orig_image[:, y_start:y_end, x_start:x_end] = image[
+        :, y_start:y_end, x_start:x_end
+    ]
+
+    for i in range(1, resolutions.shape[0]):
+        prev_resolution = data_group[f"{i-1}/cells"][
+            :, y_start:y_end, x_start:x_end
+        ]
+        data_group.require_dataset(
+            f"{i}/cells",
+            data=prev_resolution[::2, ::2, ::2],
+            chunks=(16, 32, 32),
+            compression="gzip",
+            dtype="uint16",
+            shape=prev_resolution[::2, ::2, ::2].shape,
+        )
+
+    f.close()
+
+    # print(f"Rank {rank} finished writing")
+
+
+if __name__ == "__main__":
+    xml_path = Path(
+        "/mnt/Data/TiledDataset/2.5x_tile/"
+        "One_Channel/2.5x_tile_igor_rightonly_Mag2.5x_"
+        "ch488_ch561_ch647_bdv.xml"
+    )
+    input_path = Path("/mnt/Data/TiledDataset/2.5x_tile/One_Channel/test.h5")
+    output_path = Path(
+        "/mnt/Data/TiledDataset/2.5x_tile/One_Channel/test_out.h5"
+    )
+
+    fuse_image(xml_path, input_path, output_path)
