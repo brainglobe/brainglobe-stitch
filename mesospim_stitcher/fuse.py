@@ -5,7 +5,6 @@ from shutil import rmtree
 
 import dask.array as da
 import h5py
-import numpy as np
 import zarr
 from numcodecs import Blosc
 from ome_zarr.io import parse_url
@@ -79,7 +78,7 @@ def fuse_image(
     tile_names = list(group.keys())
     max_delta = [max([abs(delta[i]) for delta in deltas]) for i in range(3)]
 
-    tile = da.from_array(group[f"{tile_names[0]}/0/cells"])
+    tile = group[f"{tile_names[0]}/0/cells"]
     z_size = tile.shape[0]
     x_y_size = tile.shape[1]
 
@@ -98,15 +97,6 @@ def fuse_image(
 
         translations.append([x_start, x_end, y_start, y_end, z_start, z_end])
 
-    # new_image = da.zeros(
-    #     (
-    #         max(translation[5] for translation in translations),
-    #         max(translation[3] for translation in translations),
-    #         max(translation[1] for translation in translations),
-    #     ),
-    #     dtype="int16",
-    # )
-
     fused_image_shape = (
         max(translation[5] for translation in translations),
         max(translation[3] for translation in translations),
@@ -120,56 +110,15 @@ def fuse_image(
         "t00000/s00/0/cells", shape=fused_image_shape, dtype="i2"
     )
 
-    square_root_cpu = 4
-
-    x_y_split_size = x_y_size // square_root_cpu
-
-    x_y_borders = [0]
-
-    for j in range(1, square_root_cpu):
-        x_y_borders.append(x_y_borders[j - 1] + x_y_split_size)
-
-    x_y_borders.append(x_y_size)
-
     for i in range(num_tiles - 1, -1, -1):
-        # for rank in range(square_root_cpu ** 2):
-        #     x_tile_s = x_y_borders[rank % square_root_cpu]
-        #     x_tile_e = x_y_borders[rank % square_root_cpu + 1]
-        #     y_tile_s = x_y_borders[rank // square_root_cpu]
-        #     y_tile_e = x_y_borders[(rank // square_root_cpu + 1)]
-        #     curr_tile = group[f"{tile_names[i]}/0/cells"]
-        #     [:, y_tile_s:y_tile_e, x_tile_s:x_tile_e]
-        #
-        #     x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
-        #     x_e = x_s + x_tile_e
-        #     x_s = x_s + x_tile_s
-        #     y_e = y_s + y_tile_e
-        #     y_s = y_s + y_tile_s
-        #
-        #     with ds.collective:
-        #         ds[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
-        #
-        #     print(f"Done tile {tile_names[i]} part {rank}")
-
         x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
-
         curr_tile = group[f"{tile_names[i]}/0/cells"]
-
-        # new_image[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
         ds[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
 
     output_file.close()
     input_file.close()
 
     write_bdv_xml(Path("testing.xml"), xml_path, output_path, ds.shape)
-
-    # try:
-    #     write_ome_zarr(output_path, new_image, overwrite)
-    #     # write_hdf5(output_path, new_image, overwrite)
-    # except Exception as e:
-    #     raise e
-    # finally:
-    #     input_file.close()
 
 
 def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
@@ -214,80 +163,6 @@ def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
             }
         ]
     }
-
-
-def write_hdf5(output_path: Path, image: da, overwrite: bool):
-    subdivisions = np.array(
-        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
-    )
-    resolutions = np.array(
-        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
-    )
-
-    # rank = MPI.COMM_WORLD.rank
-    #
-    # print(f"Rank {rank} starting to write")
-    f = h5py.File(output_path, "w")
-
-    f.create_dataset(
-        "s00/subdivisions",
-        data=subdivisions,
-        shape=subdivisions.shape,
-        dtype="uint16",
-    )
-    f.create_dataset(
-        "s00/resolutions",
-        data=resolutions,
-        shape=resolutions.shape,
-        dtype="uint16",
-    )
-
-    data_group: h5py.Group = f.create_group("t00000/s00")
-
-    data_group.create_dataset(
-        "0/cells",
-        data=image,
-        chunks=(16, 32, 32),
-        dtype="uint16",
-        shape=image.shape,
-    )
-
-    # image_shape = image.shape
-    # x_split_size = image_shape[2] // 4
-    # y_split_size = image_shape[1] // 3
-    #
-    # x_borders = [
-    #     0,
-    #     x_split_size,
-    #     x_split_size * 2,
-    #     x_split_size * 3,
-    #     image_shape[2],
-    # ]
-    # y_borders = [0, y_split_size, y_split_size * 2, image_shape[1]]
-    #
-    # x_start = x_borders[rank % 4]
-    # x_end = x_borders[rank % 4 + 1]
-    # y_start = y_borders[rank // 4]
-    # y_end = y_borders[(rank // 4 + 1)]
-    #
-    # orig_image[:, y_start:y_end, x_start:x_end] = image[
-    #     :, y_start:y_end, x_start:x_end
-    # ]
-    #
-    # for i in range(1, resolutions.shape[0]):
-    #     prev_resolution = data_group[f"{i-1}/cells"][
-    #         :, y_start:y_end, x_start:x_end
-    #     ]
-    #     data_group.require_dataset(
-    #         f"{i}/cells",
-    #         data=prev_resolution[::2, ::2, ::2],
-    #         chunks=(16, 32, 32),
-    #         compression="gzip",
-    #         dtype="uint16",
-    #         shape=prev_resolution[::2, ::2, ::2].shape,
-    #     )
-
-    f.close()
 
 
 def write_bdv_xml(
