@@ -106,17 +106,19 @@ def fuse_image(
 
     num_tiles = len(tile_names)
 
-    output_file = h5py.File(output_path, mode="w", compression="lzf")
+    output_file = h5py.File(output_path, mode="w")
     ds = output_file.require_dataset(
-        "t00000/s00/0/cells", shape=fused_image_shape, dtype="i2"
+        "t00000/s00/0/cells",
+        shape=fused_image_shape,
+        dtype="i2",
     )
 
     subdivisions = np.array(
-        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]],
+        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]],
         dtype=np.int16,
     )
     resolutions = np.array(
-        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]],
+        [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1]],
         dtype=np.int16,
     )
 
@@ -137,11 +139,11 @@ def fuse_image(
     for i in range(1, resolutions.shape[0]):
         ds_list.append(
             output_file.require_dataset(
-                f"s00/s{i:02d}/0/cells",
+                f"t00000/s00/{i}/cells",
                 shape=(
-                    fused_image_shape[2] // resolutions[i, 2] + 1,
-                    fused_image_shape[1] // resolutions[i, 1] + 1,
-                    fused_image_shape[0] // resolutions[i, 0] + 1,
+                    fused_image_shape[0] // resolutions[i][2],
+                    fused_image_shape[1] // resolutions[i][1],
+                    fused_image_shape[2] // resolutions[i][0],
                 ),
                 dtype="i2",
             )
@@ -153,24 +155,24 @@ def fuse_image(
         ds[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
 
         for j in range(1, resolutions.shape[0]):
-            x_s_down = x_s // resolutions[j, 0]
-            x_e_down = x_e // resolutions[j, 0] + 1
-            y_s_down = y_s // resolutions[j, 1]
-            y_e_down = y_e // resolutions[j, 1] + 1
-            z_s_down = z_s // resolutions[j, 2]
-            z_e_down = z_e // resolutions[j, 2] + 1
+            x_s_down = x_s // resolutions[j][0]
+            x_e_down = x_e // resolutions[j][0]
+            y_s_down = y_s // resolutions[j][1]
+            y_e_down = y_e // resolutions[j][1]
+            z_s_down = z_s // resolutions[j][2]
+            z_e_down = z_e // resolutions[j][2]
             ds_list[j][
                 z_s_down:z_e_down, y_s_down:y_e_down, x_s_down:x_e_down
             ] = curr_tile[
-                :: resolutions[j, 2],
-                :: resolutions[j, 1],
-                :: resolutions[j, 0],
+                :: resolutions[j][2],
+                :: resolutions[j][1],
+                :: resolutions[j][0],
             ]
+
+    write_bdv_xml(Path("testing.xml"), xml_path, output_path, ds.shape)
 
     output_file.close()
     input_file.close()
-
-    write_bdv_xml(Path("testing.xml"), xml_path, output_path, ds.shape)
 
 
 def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
@@ -296,6 +298,18 @@ def write_bdv_xml(
     sequence_desc.append(timepoints)
     sequence_desc.append(missing_views)
 
+    view_registrations = ET.SubElement(root, "ViewRegistrations")
+    view_registration = ET.SubElement(
+        view_registrations,
+        "ViewRegistration",
+        attrib={"timepoint": "0", "setup": "0"},
+    )
+    calibration = input_root.find(".//ViewTransform/[Name='calibration']")
+    assert (
+        calibration is not None
+    ), "No calibration tag found in the input XML file"
+    view_registration.append(calibration)
+
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
     tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
@@ -304,6 +318,9 @@ def write_bdv_xml(
 
 
 if __name__ == "__main__":
+    output_xml_path = Path(
+        "/home/igor/NIU-dev/stitching_dataset/" "One_Channel/test.xml"
+    )
     xml_path = Path(
         "/home/igor/NIU-dev/stitching_dataset/"
         "One_Channel/2.5x_tile_igor_rightonly_Mag2.5x_"
@@ -313,7 +330,8 @@ if __name__ == "__main__":
         "/home/igor/NIU-dev/stitching_dataset/One_Channel/test.h5"
     )
     output_path = Path(
-        "/home/igor/NIU-dev/stitching_dataset/One_Channel/test_out.zarr"
+        "/home/igor/NIU-dev/stitching_dataset/One_Channel/test_out.h5"
     )
 
     fuse_image(xml_path, input_path, output_path)
+    # write_bdv_xml(output_xml_path, xml_path, output_path, (2012, 8082, 5950))
