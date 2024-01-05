@@ -5,6 +5,7 @@ from shutil import rmtree
 
 import dask.array as da
 import h5py
+import numpy as np
 import zarr
 from numcodecs import Blosc
 from ome_zarr.io import parse_url
@@ -110,10 +111,61 @@ def fuse_image(
         "t00000/s00/0/cells", shape=fused_image_shape, dtype="i2"
     )
 
+    subdivisions = np.array(
+        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]],
+        dtype=np.int16,
+    )
+    resolutions = np.array(
+        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]],
+        dtype=np.int16,
+    )
+
+    output_file.require_dataset(
+        "s00/resolutions",
+        data=resolutions,
+        dtype="i2",
+        shape=resolutions.shape,
+    )
+    output_file.require_dataset(
+        "s00/subdivisions",
+        data=subdivisions,
+        dtype="i2",
+        shape=subdivisions.shape,
+    )
+    ds_list = [ds]
+
+    for i in range(1, resolutions.shape[0]):
+        ds_list.append(
+            output_file.require_dataset(
+                f"s00/s{i:02d}/0/cells",
+                shape=(
+                    fused_image_shape[2] // resolutions[i, 2] + 1,
+                    fused_image_shape[1] // resolutions[i, 1] + 1,
+                    fused_image_shape[0] // resolutions[i, 0] + 1,
+                ),
+                dtype="i2",
+            )
+        )
+
     for i in range(num_tiles - 1, -1, -1):
         x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
         curr_tile = group[f"{tile_names[i]}/0/cells"]
         ds[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
+
+        for j in range(1, resolutions.shape[0]):
+            x_s_down = x_s // resolutions[j, 0]
+            x_e_down = x_e // resolutions[j, 0] + 1
+            y_s_down = y_s // resolutions[j, 1]
+            y_e_down = y_e // resolutions[j, 1] + 1
+            z_s_down = z_s // resolutions[j, 2]
+            z_e_down = z_e // resolutions[j, 2] + 1
+            ds_list[j][
+                z_s_down:z_e_down, y_s_down:y_e_down, x_s_down:x_e_down
+            ] = curr_tile[
+                :: resolutions[j, 2],
+                :: resolutions[j, 1],
+                :: resolutions[j, 0],
+            ]
 
     output_file.close()
     input_file.close()
