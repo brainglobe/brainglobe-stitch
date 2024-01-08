@@ -11,6 +11,8 @@ from numcodecs import Blosc
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_image
 
+from mesospim_stitcher.file_utils import write_bdv_xml
+
 
 def fuse_image(
     xml_path: Path, input_path: Path, output_path: Path, overwrite: bool = True
@@ -219,119 +221,23 @@ def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
     }
 
 
-def write_bdv_xml(
-    output_xml_path: Path,
-    input_xml_path: Path,
-    hdf5_path: Path,
-    image_size: tuple,
-):
-    input_tree = ET.parse(input_xml_path)
-    input_root = input_tree.getroot()
-
-    generated_by = input_root.find(".//generatedBy")
-    base_path = input_root.find(".//BasePath")
-
-    root = ET.Element("SpimData", version="0.2")
-    assert (
-        generated_by is not None
-    ), "No generatedBy tag found in the input XML file"
-    assert base_path is not None, "No BasePath tag found in the input XML file"
-    root.append(generated_by)
-    root.append(base_path)
-
-    sequence_desc = ET.SubElement(root, "SequenceDescription")
-    image_loader = input_root.find(".//ImageLoader")
-    assert (
-        image_loader is not None
-    ), "No ImageLoader tag found in the input XML file"
-
-    hdf5_path_node = image_loader.find(".//hdf5")
-    assert (
-        hdf5_path_node is not None
-    ), "No hdf5 tag found in the input XML file"
-    hdf5_path_node.text = str(hdf5_path)
-    sequence_desc.append(image_loader)
-
-    view_setup = input_root.find(".//ViewSetup")
-    assert (
-        view_setup is not None
-    ), "No ViewSetup tag found in the input XML file"
-    view_setup[3].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
-
-    view_setups = ET.SubElement(sequence_desc, "ViewSetups")
-    view_setups.append(view_setup)
-
-    attributes_illumination = input_root.find(
-        ".//Attributes[@name='illumination']"
-    )
-    assert (
-        attributes_illumination is not None
-    ), "No illumination attributes found in the input XML file"
-    view_setups.append(attributes_illumination)
-
-    attributes_channel = input_root.find(".//Attributes[@name='channel']")
-    assert (
-        attributes_channel is not None
-    ), "No channel attributes found in the input XML file"
-    view_setups.append(attributes_channel)
-
-    attributes_tiles = ET.SubElement(view_setups, "Attributes", name="tile")
-    tile = input_root.find(".//Tile/[id='0']")
-    assert tile is not None, "No Tile tag found in the input XML file"
-    attributes_tiles.append(tile)
-
-    attributes_angles = input_root.find(".//Attributes[@name='angle']")
-    assert (
-        attributes_angles is not None
-    ), "No angle attributes found in the input XML file"
-    view_setups.append(attributes_angles)
-
-    timepoints = input_root.find(".//Timepoints")
-    assert (
-        timepoints is not None
-    ), "No Timepoints tag found in the input XML file"
-    missing_views = input_root.find(".//MissingViews")
-    assert (
-        missing_views is not None
-    ), "No MissingViews tag found in the input XML file"
-
-    sequence_desc.append(timepoints)
-    sequence_desc.append(missing_views)
-
-    view_registrations = ET.SubElement(root, "ViewRegistrations")
-    view_registration = ET.SubElement(
-        view_registrations,
-        "ViewRegistration",
-        attrib={"timepoint": "0", "setup": "0"},
-    )
-    calibration = input_root.find(".//ViewTransform/[Name='calibration']")
-    assert (
-        calibration is not None
-    ), "No calibration tag found in the input XML file"
-    view_registration.append(calibration)
-
-    tree = ET.ElementTree(root)
-    ET.indent(tree, space="  ")
-    tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
-
-    return
-
-
 if __name__ == "__main__":
     output_xml_path = Path(
         "/home/igor/NIU-dev/stitching_dataset/" "One_Channel/test.xml"
     )
+
     xml_path = Path(
         "/home/igor/NIU-dev/stitching_dataset/"
         "One_Channel/2.5x_tile_igor_rightonly_Mag2.5x_"
         "ch488_ch561_ch647_bdv.xml"
     )
+
     input_path = Path(
         "/home/igor/NIU-dev/stitching_dataset/One_Channel/test.h5"
     )
+
     output_path = Path(
         "/home/igor/NIU-dev/stitching_dataset/One_Channel/test_out.h5"
     )
 
     fuse_image(xml_path, input_path, output_path)
-    # write_bdv_xml(output_xml_path, xml_path, output_path, (2012, 8082, 5950))
