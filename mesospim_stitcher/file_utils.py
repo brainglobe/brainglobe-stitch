@@ -1,12 +1,45 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import h5py
+import numpy as np
+
 HEADERS = [
     "[POSITION]",
     "[ETL PARAMETERS]",
     "[GALVO PARAMETERS]",
     "[CAMERA PARAMETERS]",
 ]
+
+
+def create_pyramid_bdv_h5(
+    input_file: Path, resolutions_array: np.array, subdivisions_array: np.array
+):
+    with h5py.File(input_file, "r+") as f:
+        data_group = f["t00000"]
+
+        for curr_slice in data_group:
+            del f[f"{curr_slice}/resolutions"]
+            del f[f"{curr_slice}/subdivisions"]
+            f[f"{curr_slice}/resolutions"] = resolutions_array
+            f[f"{curr_slice}/subdivisions"] = subdivisions_array
+
+            grp: h5py.Group = f[f"t00000/{curr_slice}"]
+            for i in range(1, resolutions_array.shape[0]):
+                downsampling_factors = (
+                    resolutions_array[i] // resolutions_array[i - 1]
+                )
+                prev_resolution = grp[f"{i - 1}/cells"]
+                grp.create_dataset(
+                    f"{i}/cells",
+                    data=prev_resolution[
+                        :: downsampling_factors[2],
+                        :: downsampling_factors[1],
+                        :: downsampling_factors[0],
+                    ],
+                )
+
+    return
 
 
 def write_big_stitcher_tile_config(meta_file_name: Path) -> list[dict]:
