@@ -107,14 +107,14 @@ def fuse_image(
         max(translation[1] for translation in translations),
     )
 
-    fuse_to_bdv_h5(
-        fused_image_shape,
-        group,
-        output_path,
-        tile_names,
-        translations,
-        xml_path,
-    )
+    # fuse_to_bdv_h5(
+    #     fused_image_shape,
+    #     group,
+    #     output_path,
+    #     tile_names,
+    #     translations,
+    #     xml_path,
+    # )
     fuse_to_zarr(
         fused_image_shape, group, output_path, tile_names, translations
     )
