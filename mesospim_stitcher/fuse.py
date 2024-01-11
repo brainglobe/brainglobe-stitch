@@ -8,8 +8,9 @@ import h5py
 import numpy as np
 import zarr
 from numcodecs import Blosc
+from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.io import parse_url
-from ome_zarr.writer import write_image
+from ome_zarr.writer import write_image, write_multiscales_metadata
 
 from mesospim_stitcher.file_utils import write_bdv_xml
 
@@ -106,6 +107,113 @@ def fuse_image(
         max(translation[1] for translation in translations),
     )
 
+    fuse_to_bdv_h5(
+        fused_image_shape,
+        group,
+        output_path,
+        tile_names,
+        translations,
+        xml_path,
+    )
+    fuse_to_zarr(
+        fused_image_shape, group, output_path, tile_names, translations
+    )
+
+    input_file.close()
+
+
+def fuse_to_zarr(
+    fused_image_shape: tuple[int, int, int],
+    group: h5py.Group,
+    output_path: Path,
+    tile_names: list,
+    translations: list,
+):
+    num_tiles = len(tile_names)
+
+    tiles = []
+
+    for child in group:
+        curr_tile = group[f"{child}/0/cells"]
+        tiles.append(da.from_array(curr_tile))
+
+    # fused_image = da.zeros(fused_image_shape, dtype="int16")
+    store = zarr.NestedDirectoryStore(str(output_path))
+    root = zarr.group(store=store)
+    fused_image_store = root.create(
+        "0",
+        shape=fused_image_shape,
+        chunks=(4, 2048, 2048),
+        dtype="i2",
+        compressor=Blosc(cname="zstd", clevel=4, shuffle=Blosc.SHUFFLE),
+    )
+
+    coordinate_transformations = [
+        [{"type": "scale", "scale": [5.0, 2.6, 2.6]}],
+        [{"type": "scale", "scale": [5.0, 5.2, 5.2]}],
+        [{"type": "scale", "scale": [5.0, 10.4, 10.4]}],
+        [{"type": "scale", "scale": [5.0, 20.8, 20.8]}],
+        [{"type": "scale", "scale": [5.0, 41.6, 41.6]}],
+    ]
+
+    for i in range(num_tiles - 1, -1, -1):
+        x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
+        curr_tile = tiles[i]
+        fused_image_store[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
+
+        print("Done tile " + str(i))
+
+    for i in range(1, len(coordinate_transformations)):
+        prev_resolution = da.from_zarr(root[f"{i - 1}"])
+        downsampled_image = downscale_nearest(prev_resolution, (1, 2, 2))
+        downsampled_shape = downsampled_image.shape
+        downsampled_store = root.require_dataset(
+            f"{i}",
+            shape=downsampled_shape,
+            chunks=(4, (2048 // 2**i), (2048 // 2**i)),
+            dtype="i2",
+            compressor=Blosc(cname="zstd", clevel=4, shuffle=Blosc.SHUFFLE),
+        )
+        downsampled_image.to_zarr(downsampled_store)
+
+    datasets = []
+
+    for i, transform in enumerate(coordinate_transformations):
+        datasets.append(
+            {"path": f"{i}", "coordinateTransformations": transform}
+        )
+
+    write_multiscales_metadata(
+        group=root,
+        datasets=datasets,
+        axes=[
+            {"name": "z", "type": "space", "unit": "micrometer"},
+            {"name": "y", "type": "space", "unit": "micrometer"},
+            {"name": "x", "type": "space", "unit": "micrometer"},
+        ],
+    )
+
+    root.attrs["omero"] = {
+        "channels": [
+            {
+                "window": {"start": 0, "end": 1200, "min": 0, "max": 65535},
+                "label": "stitched",
+                "active": True,
+            }
+        ]
+    }
+
+    # write_ome_zarr(output_path, fused_image, overwrite=True)
+
+
+def fuse_to_bdv_h5(
+    fused_image_shape: tuple[int, int, int],
+    group: h5py.Group,
+    output_path: Path,
+    tile_names: list,
+    translations: list,
+    xml_path: Path,
+):
     num_tiles = len(tile_names)
 
     output_file = h5py.File(output_path, mode="w")
@@ -114,7 +222,6 @@ def fuse_image(
         shape=fused_image_shape,
         dtype="i2",
     )
-
     subdivisions = np.array(
         [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]],
         dtype=np.int16,
@@ -123,7 +230,6 @@ def fuse_image(
         [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1]],
         dtype=np.int16,
     )
-
     output_file.require_dataset(
         "s00/resolutions",
         data=resolutions,
@@ -137,7 +243,6 @@ def fuse_image(
         shape=subdivisions.shape,
     )
     ds_list = [ds]
-
     for i in range(1, resolutions.shape[0]):
         ds_list.append(
             output_file.require_dataset(
@@ -172,9 +277,7 @@ def fuse_image(
             ]
 
     write_bdv_xml(Path("testing.xml"), xml_path, output_path, ds.shape)
-
     output_file.close()
-    input_file.close()
 
 
 def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
@@ -205,7 +308,7 @@ def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
             [{"type": "scale", "scale": [10.0, 41.6, 41.6]}],
         ],
         storage_options=dict(
-            chunks=(4, image.shape[1], image.shape[2]),
+            chunks=(2, image.shape[1], image.shape[2]),
             compressor=compressor,
         ),
     )
