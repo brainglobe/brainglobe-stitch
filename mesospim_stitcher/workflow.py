@@ -8,14 +8,18 @@ XML_PATH = (
     "C:/Users/Igor/Documents/NIU-dev/stitching/One_Channel/"
     "2.5x_tile_igor_rightonly_Mag2.5x_ch488_ch561_ch647_bdv.xml"
 )
+
 H5_PATH = "C:/Users/Igor/Documents/NIU-dev/stitching/One_Channel/test.h5"
+
 OUT_PATH = (
     "C:/Users/Igor/Documents/NIU-dev/stitching/One_Channel/test_out.zarr"
 )
+
 META_PATH = (
     "C:/Users/Igor/Documents/NIU-dev/stitching/One_Channel/"
     "2.5x_tile_igor_rightonly_Mag2.5x_ch488_ch561_ch647_bdv.h5_meta.txt"
 )
+
 TILE_CONFIG_PATH = (
     "C:/Users/Igor/Documents/NIU-dev/stitching/One_Channel/"
     "2.5x_tile_igor_rightonly_Mag2.5x"
@@ -25,6 +29,7 @@ TILE_CONFIG_PATH = (
 DOWNSAMPLE_ARRAY = np.array(
     [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
 )
+
 SUBDIVISION_ARRAY = np.array(
     [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
 )

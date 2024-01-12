@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def run_big_stitcher(
-    imageJ_path: Path,
+    imagej_path: Path,
     xml_path: Path,
     tile_config_path: Path,
     all_channels: bool = False,
@@ -14,7 +14,7 @@ def run_big_stitcher(
 ):
     stitch_macro_path = Path(__file__).resolve().parent / "stitch_macro.ijm"
     command = (
-        f"{imageJ_path} --ij2"
+        f"{imagej_path} --ij2"
         f" --headless -macro {stitch_macro_path} "
         f'"{xml_path} {tile_config_path} {int(all_channels)}'
         f' {selected_channel} {downsample_x} {downsample_y} {downsample_z}"'

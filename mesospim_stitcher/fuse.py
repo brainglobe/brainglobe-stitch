@@ -15,36 +15,62 @@ from ome_zarr.writer import write_image, write_multiscales_metadata
 from mesospim_stitcher.file_utils import write_bdv_xml
 
 
-def fuse_image(
-    xml_path: Path, input_path: Path, output_path: Path, overwrite: bool = True
-):
+def fuse_image(xml_path: Path, input_path: Path, output_path: Path):
+    input_file = h5py.File(input_path, "r")
+    group = input_file["t00000"]
+    tile_names = list(group.keys())
+
+    tile = group[f"{tile_names[0]}/0/cells"]
+    z_size, y_size, x_size = tile.shape
+
+    tile_positions = get_big_stitcher_transforms(
+        xml_path, x_size, y_size, z_size
+    )
+
+    fused_image_shape = (
+        max(tile_position[5] for tile_position in tile_positions),
+        max(tile_position[3] for tile_position in tile_positions),
+        max(tile_position[1] for tile_position in tile_positions),
+    )
+
+    if output_path.suffix == ".zarr":
+        fuse_to_zarr(
+            fused_image_shape, group, output_path, tile_names, tile_positions
+        )
+    elif output_path.suffix == ".h5":
+        fuse_to_bdv_h5(
+            fused_image_shape,
+            group,
+            output_path,
+            tile_names,
+            tile_positions,
+            xml_path,
+        )
+
+    input_file.close()
+
+
+def get_big_stitcher_transforms(xml_path, x_size, y_size, z_size):
     tree = ET.parse(xml_path)
-
     root = tree.getroot()
-
     stitch_transforms = root.findall(
         ".//ViewTransform/[Name='Stitching Transform']/affine"
     )
     assert (
         stitch_transforms is not None
     ), "No stitching transforms found in XML file"
-
     grid_transforms = root.findall(
         ".//ViewTransform/[Name='Translation from Tile Configuration']/affine"
     )
-
     if len(grid_transforms) == 0:
         grid_transforms = root.findall(
             ".//ViewTransform/[Name='Translation to Regular Grid']/affine"
         )
-
     assert grid_transforms is not None, "No grid transforms found in XML file"
-
     z_scale_str = root.find(".//ViewTransform/[Name='calibration']/affine")
     assert z_scale_str is not None, "No z scale found in XML file"
     assert z_scale_str.text is not None, "No z scale found in XML file"
     z_scale = float(z_scale_str.text.split()[-2])
-
     deltas = []
     grids = []
     for i in range(len(stitch_transforms)):
@@ -76,15 +102,7 @@ def fuse_image(
 
     min_grid = [min([grid[i] for grid in grids]) for i in range(3)]
     grids = [[grid[i] - min_grid[i] for i in range(3)] for grid in grids]
-
-    input_file = h5py.File(input_path, "r")
-    group = input_file["t00000"]
-    tile_names = list(group.keys())
     max_delta = [max([abs(delta[i]) for delta in deltas]) for i in range(3)]
-
-    tile = group[f"{tile_names[0]}/0/cells"]
-    z_size = tile.shape[0]
-    x_y_size = tile.shape[1]
 
     translations = []
 
@@ -93,33 +111,15 @@ def fuse_image(
         curr_grid = grids[i]
 
         x_start = curr_grid[0] + curr_delta[0] + max_delta[0]
-        x_end = x_start + x_y_size
+        x_end = x_start + x_size
         y_start = curr_grid[1] + curr_delta[1] + max_delta[1]
-        y_end = y_start + x_y_size
+        y_end = y_start + y_size
         z_start = curr_grid[2] + curr_delta[2] + max_delta[2]
         z_end = z_start + z_size
 
         translations.append([x_start, x_end, y_start, y_end, z_start, z_end])
 
-    fused_image_shape = (
-        max(translation[5] for translation in translations),
-        max(translation[3] for translation in translations),
-        max(translation[1] for translation in translations),
-    )
-
-    # fuse_to_bdv_h5(
-    #     fused_image_shape,
-    #     group,
-    #     output_path,
-    #     tile_names,
-    #     translations,
-    #     xml_path,
-    # )
-    fuse_to_zarr(
-        fused_image_shape, group, output_path, tile_names, translations
-    )
-
-    input_file.close()
+    return translations
 
 
 def fuse_to_zarr(
