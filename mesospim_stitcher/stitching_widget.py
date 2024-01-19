@@ -4,6 +4,7 @@ import dask.array as da
 import h5py
 import numpy as np
 from brainglobe_utils.qtpy.logo import header_widget
+from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
 from qtpy.QtWidgets import (
@@ -11,12 +12,16 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from mesospim_stitcher.file_utils import check_mesospim_directory
+from mesospim_stitcher.file_utils import (
+    check_mesospim_directory,
+    create_pyramid_bdv_h5,
+)
 
 DOWNSAMPLE_ARRAY = np.array(
     [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
@@ -30,6 +35,7 @@ SUBDIVISION_ARRAY = np.array(
 class StitchingWidget(QWidget):
     def __init__(self, napari_viewer: Viewer):
         super().__init__()
+        self.progress_bar = QProgressBar(self)
         self._viewer = napari_viewer
         self.xml_path = None
         self.meta_path = None
@@ -70,12 +76,21 @@ class StitchingWidget(QWidget):
         self.layout().addWidget(QLabel("Select mesospim directory:"))
         self.layout().addWidget(self.select_mesospim_directory)
 
-        self.add_tiles_button = QPushButton("Add tiles")
+        self.create_pyramid_button = QPushButton("Create resolution pyramid")
+        self.create_pyramid_button.clicked.connect(
+            self._on_create_pyramid_button_clicked
+        )
+        self.create_pyramid_button.setEnabled(False)
+
+        self.layout().addWidget(self.create_pyramid_button)
+
+        self.add_tiles_button = QPushButton("Add tiles to viewer")
         self.add_tiles_button.clicked.connect(
             self._on_add_tiles_button_clicked
         )
         self.add_tiles_button.setEnabled(False)
         self.layout().addWidget(self.add_tiles_button)
+        self.layout().addWidget(self.progress_bar)
 
     def _on_open_file_dialog_clicked(self):
         self.working_directory = Path(
@@ -93,19 +108,38 @@ class StitchingWidget(QWidget):
         self.check_and_load_mesospim_directory()
 
     def _on_add_tiles_button_clicked(self):
+        self.h5_file = h5py.File(self.h5_path, "r")
         self.tiles = []
         tile_group = self.h5_file["t00000"]
 
         for child in tile_group:
-            curr_tile = da.from_array(tile_group[f"{child}/2/cells"])
+            try:
+                curr_tile = da.from_array(tile_group[f"{child}/3/cells"])
+            except KeyError:
+                show_warning("Resolution pyramid not found")
+
             self.tiles.append(curr_tile)
-            print("Adding tile to napari")
             self._viewer.add_image(
                 curr_tile,
                 contrast_limits=[0, 1500],
                 multiscale=False,
                 name=child,
             )
+
+    def _on_create_pyramid_button_clicked(self):
+        self.progress_bar.setValue(0)
+        self.progress_bar.setRange(0, 100)
+
+        worker = create_worker(
+            create_pyramid_bdv_h5,
+            self.h5_path,
+            DOWNSAMPLE_ARRAY,
+            SUBDIVISION_ARRAY,
+            yield_progress=True,
+        )
+        worker.yielded.connect(self.progress_bar.setValue)
+        worker.finished.connect(self.progress_bar.reset)
+        worker.start()
 
     def check_and_load_mesospim_directory(self):
         try:
@@ -114,7 +148,7 @@ class StitchingWidget(QWidget):
                 self.meta_path,
                 self.h5_path,
             ) = check_mesospim_directory(self.working_directory)
-            self.h5_file = h5py.File(self.h5_path, "r")
             self.add_tiles_button.setEnabled(True)
+            self.create_pyramid_button.setEnabled(True)
         except FileNotFoundError:
             show_warning("mesoSPIM directory not valid")

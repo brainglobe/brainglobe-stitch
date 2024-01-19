@@ -13,10 +13,15 @@ HEADERS = [
 
 
 def create_pyramid_bdv_h5(
-    input_file: Path, resolutions_array: np.array, subdivisions_array: np.array
+    input_file: Path,
+    resolutions_array: np.array,
+    subdivisions_array: np.array,
+    yield_progress: bool = False,
 ):
     with h5py.File(input_file, "r+") as f:
         data_group = f["t00000"]
+        num_done = 0
+        num_slices = len(data_group)
 
         for curr_slice in data_group:
             del f[f"{curr_slice}/resolutions"]
@@ -30,16 +35,28 @@ def create_pyramid_bdv_h5(
                     resolutions_array[i] // resolutions_array[i - 1]
                 )
                 prev_resolution = grp[f"{i - 1}/cells"]
-                grp.create_dataset(
+                grp.require_dataset(
                     f"{i}/cells",
-                    data=prev_resolution[
-                        :: downsampling_factors[2],
-                        :: downsampling_factors[1],
-                        :: downsampling_factors[0],
-                    ],
+                    dtype=prev_resolution.dtype,
+                    shape=(
+                        (prev_resolution.shape[0] + 1)
+                        // downsampling_factors[2],
+                        (prev_resolution.shape[1] + 1)
+                        // downsampling_factors[1],
+                        (prev_resolution.shape[2] + 1)
+                        // downsampling_factors[0],
+                    ),
                 )
+                grp[f"{i}/cells"][...] = prev_resolution[
+                    :: downsampling_factors[2],
+                    :: downsampling_factors[1],
+                    :: downsampling_factors[0],
+                ]
 
-    return
+            num_done += 1
+
+            if yield_progress:
+                yield int(100 * num_done / num_slices)
 
 
 def write_big_stitcher_tile_config(meta_file_name: Path) -> list[dict]:
