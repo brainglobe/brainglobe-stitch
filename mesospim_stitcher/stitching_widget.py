@@ -2,6 +2,7 @@ from pathlib import Path
 
 import dask.array as da
 import h5py
+import numpy as np
 from brainglobe_utils.qtpy.logo import header_widget
 from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
@@ -16,6 +17,14 @@ from qtpy.QtWidgets import (
 )
 
 from mesospim_stitcher.file_utils import check_mesospim_directory
+
+DOWNSAMPLE_ARRAY = np.array(
+    [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
+)
+
+SUBDIVISION_ARRAY = np.array(
+    [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
+)
 
 
 class StitchingWidget(QWidget):
@@ -88,7 +97,7 @@ class StitchingWidget(QWidget):
         tile_group = self.h5_file["t00000"]
 
         for child in tile_group:
-            curr_tile = da.from_array(tile_group[f"{child}/0/cells"])
+            curr_tile = da.from_array(tile_group[f"{child}/2/cells"])
             self.tiles.append(curr_tile)
             print("Adding tile to napari")
             self._viewer.add_image(
