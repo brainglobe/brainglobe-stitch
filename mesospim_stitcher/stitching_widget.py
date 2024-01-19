@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Dict, List
 
 import dask.array as da
 import h5py
@@ -21,6 +22,7 @@ from qtpy.QtWidgets import (
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
+    write_big_stitcher_tile_config,
 )
 
 DOWNSAMPLE_ARRAY = np.array(
@@ -41,7 +43,8 @@ class StitchingWidget(QWidget):
         self.meta_path = None
         self.h5_path = None
         self.h5_file = None
-        self.tiles: da = []
+        self.tiles: List[da] = []
+        self.tile_metadata: List[Dict] = []
 
         self.setLayout(QVBoxLayout())
 
@@ -90,7 +93,12 @@ class StitchingWidget(QWidget):
         )
         self.add_tiles_button.setEnabled(False)
         self.layout().addWidget(self.add_tiles_button)
+
         self.layout().addWidget(self.progress_bar)
+
+        self.test_button = QPushButton("Test")
+        self.test_button.clicked.connect(self._on_test_button_clicked)
+        self.layout().addWidget(self.test_button)
 
     def _on_open_file_dialog_clicked(self):
         self.working_directory = Path(
@@ -107,25 +115,6 @@ class StitchingWidget(QWidget):
         )
         self.check_and_load_mesospim_directory()
 
-    def _on_add_tiles_button_clicked(self):
-        self.h5_file = h5py.File(self.h5_path, "r")
-        self.tiles = []
-        tile_group = self.h5_file["t00000"]
-
-        for child in tile_group:
-            try:
-                curr_tile = da.from_array(tile_group[f"{child}/3/cells"])
-            except KeyError:
-                show_warning("Resolution pyramid not found")
-
-            self.tiles.append(curr_tile)
-            self._viewer.add_image(
-                curr_tile,
-                contrast_limits=[0, 1500],
-                multiscale=False,
-                name=child,
-            )
-
     def _on_create_pyramid_button_clicked(self):
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 100)
@@ -141,6 +130,25 @@ class StitchingWidget(QWidget):
         worker.finished.connect(self.progress_bar.reset)
         worker.start()
 
+    def _on_add_tiles_button_clicked(self):
+        self.h5_file = h5py.File(self.h5_path, "r")
+        self.tiles = []
+        tile_group = self.h5_file["t00000"]
+
+        for child in tile_group:
+            try:
+                curr_tile = da.from_array(tile_group[f"{child}/3/cells"])
+            except KeyError:
+                show_warning("Resolution pyramid not found")
+
+            self.tiles.append(curr_tile)
+            self._viewer.add_image(
+                curr_tile,
+                contrast_limits=[0, 2000],
+                multiscale=False,
+                name=child,
+            )
+
     def check_and_load_mesospim_directory(self):
         try:
             (
@@ -148,7 +156,19 @@ class StitchingWidget(QWidget):
                 self.meta_path,
                 self.h5_path,
             ) = check_mesospim_directory(self.working_directory)
+            with h5py.File(self.h5_path, "r") as f:
+                if len(f["t00000/s00"].keys()) <= 1:
+                    show_warning("Resolution pyramid not found")
+                    self.create_pyramid_button.setEnabled(True)
+
             self.add_tiles_button.setEnabled(True)
-            self.create_pyramid_button.setEnabled(True)
         except FileNotFoundError:
             show_warning("mesoSPIM directory not valid")
+
+    def _on_test_button_clicked(self):
+        self.tile_metadata = write_big_stitcher_tile_config(
+            self.meta_path, self.h5_path
+        )
+        print(self.tile_metadata)
+        # print([tile['x_pos'] for tile in self.tile_metadata])
+        # print([tile['y_pos'] for tile in self.tile_metadata])

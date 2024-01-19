@@ -59,7 +59,9 @@ def create_pyramid_bdv_h5(
                 yield int(100 * num_done / num_slices)
 
 
-def write_big_stitcher_tile_config(meta_file_name: Path) -> list[dict]:
+def write_big_stitcher_tile_config(
+    meta_file_name: Path, h5_path: Path
+) -> list[dict]:
     tile_metadata = parse_mesospim_metadata(meta_file_name)
 
     output_file = str(meta_file_name)[:-12] + "_tile_config.txt"
@@ -93,13 +95,19 @@ def write_big_stitcher_tile_config(meta_file_name: Path) -> list[dict]:
         )
         relative_locations.append(rel_tuple)
 
+    tile_names = []
+    with h5py.File(h5_path, "r") as f:
+        for tile in f["t00000"]:
+            tile_names.append(tile)
+
     with open(output_file, "w") as f:
         f.write("dim=3\n")
-        for i in range(len(tile_metadata)):
+        for i, tile_name in enumerate(tile_names):
+            tile_index = (i % num_channels) + (i // num_tiles) * num_channels
             f.write(
-                f"{i};;"
-                f"({relative_locations[i%num_tiles][0]},"
-                f"{relative_locations[i%num_tiles][1]},0)\n"
+                f"{tile_name[1:]};;"
+                f"({relative_locations[tile_index][0]},"
+                f"{relative_locations[tile_index][1]},0)\n"
             )
 
     return tile_metadata
