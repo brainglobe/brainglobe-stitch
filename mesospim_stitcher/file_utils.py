@@ -214,3 +214,26 @@ def write_bdv_xml(
     tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
 
     return
+
+
+def check_mesospim_directory(
+    mesospim_directory: Path,
+) -> tuple[Path, Path, Path]:
+    xml_path = list(mesospim_directory.glob("*bdv.xml"))
+    meta_path = list(mesospim_directory.glob("*h5_meta.txt"))
+    h5_path = list(mesospim_directory.glob("*.h5"))
+
+    if len(xml_path) != 1:
+        raise FileNotFoundError(
+            "Expected 1 bdv.xml file, found {len(xml_path)}"
+        )
+
+    if len(meta_path) != 1:
+        raise FileNotFoundError(
+            "Expected 1 h5_meta.txt file, found {len(meta_path)}"
+        )
+
+    if len(h5_path) != 1:
+        raise FileNotFoundError("Expected 1 h5 file, found {len(h5_path)}")
+
+    return xml_path[0], meta_path[0], h5_path[0]

@@ -10,6 +10,7 @@ license = {text = "BSD-3-Clause"}
 
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
+    "Framework :: napari",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -17,6 +18,17 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Operating System :: OS Independent",
     "License :: OSI Approved :: BSD License",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+
+dependencies = [
+    "napari>=0.4.18",
+    "brainglobe-utils>=0.3.4",
+    "h5py",
+    "ome-zarr",
+    "zarr",
+    "numpy",
+    "qtpy",
 ]
 
 [project.urls]
@@ -26,6 +38,9 @@ classifiers = [
 
 "Source Code" = "https://github.com/IgorTatarnikov/mesoSPIM-stitcher"
 "User Support" = "https://github.com/IgorTatarnikov/mesoSPIM-stitcher/issues"
+
+[project.entry-points."napari.manifest"]
+mesospim-stitcher = "mesospim_stitcher:napari.yaml"
 
 [project.optional-dependencies]
 dev = [
@@ -52,7 +67,7 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["mesospim-stitcher*"]
+include = ["mesospim_stitcher*"]
 exclude = ["tests", "docs*"]
 
 

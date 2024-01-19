@@ -1,0 +1,10 @@
+name: mesospim-stitcher
+display_name: BrainGlobe Stitcher
+contributions:
+  commands:
+    - id: mesospim-stitcher.make_stitching_widget
+      python_name: mesospim_stitcher.stitching_widget:StitchingWidget
+      title: Make stitching widget
+  widgets:
+    - command: mesospim-stitcher.make_stitching_widget
+      display_name: BrainGlobe Stitcher

@@ -1,5 +1,8 @@
 include LICENSE
 include README.md
+include .napari-hub/DESCRIPTION.md
+include .napari-hub/config.yml
+include mesospim_stitcher/napari.yaml
 exclude .pre-commit-config.yaml
 exclude *.ipynb
 
