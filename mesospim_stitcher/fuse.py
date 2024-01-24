@@ -2,12 +2,13 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from shutil import rmtree
+from typing import Dict, List, Tuple
 
 import dask.array as da
 import h5py
 import numpy as np
 import zarr
-from numcodecs import Blosc
+from numcodecs import Blosc, blosc
 from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_image, write_multiscales_metadata
@@ -15,7 +16,15 @@ from ome_zarr.writer import write_image, write_multiscales_metadata
 from mesospim_stitcher.file_utils import write_bdv_xml
 
 
-def fuse_image(xml_path: Path, input_path: Path, output_path: Path):
+def fuse_image(
+    xml_path: Path,
+    input_path: Path,
+    output_path: Path,
+    tile_metadata: List[Dict],
+    contrast_limits: List[float],
+    num_channels: int = 1,
+    yield_progress: bool = False,
+):
     input_file = h5py.File(input_path, "r")
     group = input_file["t00000"]
     tile_names = list(group.keys())
@@ -27,6 +36,36 @@ def fuse_image(xml_path: Path, input_path: Path, output_path: Path):
         xml_path, x_size, y_size, z_size
     )
 
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    view_setups = root.findall(".//ViewSetup//attributes")
+
+    slice_attributes = {}
+    for child, name in zip(view_setups, tile_names):
+        sub_dict = {}
+        for sub_child in child:
+            sub_dict[sub_child.tag] = sub_child.text
+
+        slice_attributes[name] = sub_dict
+
+    channel_max_contrast = np.zeros(num_channels, dtype=np.int16)
+
+    for contrast, tile_name in zip(contrast_limits, tile_names):
+        channel_idx = int(slice_attributes[tile_name]["channel"])
+        channel_max_contrast[channel_idx] = max(
+            channel_max_contrast[channel_idx], contrast
+        )
+
+    contrast_scale_factors = []
+
+    for contrast, tile_name in zip(contrast_limits, tile_names):
+        channel_idx = int(slice_attributes[tile_name]["channel"])
+        contrast_scale_factors.append(
+            channel_max_contrast[channel_idx] / contrast
+        )
+
+    contrast_scale_factors = np.array(contrast_scale_factors, dtype=np.float16)
+
     fused_image_shape = (
         max(tile_position[5] for tile_position in tile_positions),
         max(tile_position[3] for tile_position in tile_positions),
@@ -35,7 +74,16 @@ def fuse_image(xml_path: Path, input_path: Path, output_path: Path):
 
     if output_path.suffix == ".zarr":
         fuse_to_zarr(
-            fused_image_shape, group, output_path, tile_names, tile_positions
+            fused_image_shape,
+            group,
+            output_path,
+            tile_names,
+            tile_positions,
+            tile_metadata,
+            slice_attributes,
+            contrast_scale_factors,
+            num_channels,
+            yield_progress,
         )
     elif output_path.suffix == ".h5":
         fuse_to_bdv_h5(
@@ -48,6 +96,8 @@ def fuse_image(xml_path: Path, input_path: Path, output_path: Path):
         )
 
     input_file.close()
+
+    print("Done")
 
 
 def get_big_stitcher_transforms(xml_path, x_size, y_size, z_size):
@@ -123,58 +173,160 @@ def get_big_stitcher_transforms(xml_path, x_size, y_size, z_size):
 
 
 def fuse_to_zarr(
-    fused_image_shape: tuple[int, int, int],
+    fused_image_shape: Tuple[int, ...],
     group: h5py.Group,
     output_path: Path,
-    tile_names: list,
-    translations: list,
+    tile_names: List[str],
+    translations: List[List[int]],
+    tile_metadata: List[Dict],
+    slice_attributes: Dict[str, Dict[str, str]],
+    contrast_scale_factors: List[float],
+    num_channels: int,
+    yield_progress: bool,
 ):
+    print("Fusing to zarr")
     num_tiles = len(tile_names)
 
+    chunk_shape: Tuple[int, ...] = (2, 2048, 2048)
     tiles = []
 
     for child in group:
         curr_tile = group[f"{child}/0/cells"]
-        tiles.append(da.from_array(curr_tile))
+        tiles.append(da.from_array(curr_tile, chunks=chunk_shape))
 
-    # fused_image = da.zeros(fused_image_shape, dtype="int16")
+    x_y_resolution = tile_metadata[0]["Pixelsize in um"]
+    z_resolution = tile_metadata[0]["z_stepsize"]
+    coordinate_transformations = [
+        [
+            {
+                "type": "scale",
+                "scale": [z_resolution, x_y_resolution, x_y_resolution],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 2,
+                    x_y_resolution * 2,
+                ],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 4,
+                    x_y_resolution * 4,
+                ],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 8,
+                    x_y_resolution * 8,
+                ],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 16,
+                    x_y_resolution * 16,
+                ],
+            }
+        ],
+    ]
+    axes = [
+        {"name": "z", "type": "space", "unit": "micrometer"},
+        {"name": "y", "type": "space", "unit": "micrometer"},
+        {"name": "x", "type": "space", "unit": "micrometer"},
+    ]
+
+    if num_channels > 1:
+        fused_image_shape = (num_channels,) + fused_image_shape
+        chunk_shape = (1,) + chunk_shape
+
+        for transform in coordinate_transformations:
+            transform[0]["scale"] = [1.0, *transform[0]["scale"]]
+
+        axes = [
+            {"name": "c", "type": "channel"},
+            {"name": "z", "type": "space", "unit": "micrometer"},
+            {"name": "y", "type": "space", "unit": "micrometer"},
+            {"name": "x", "type": "space", "unit": "micrometer"},
+        ]
+
     store = zarr.NestedDirectoryStore(str(output_path))
     root = zarr.group(store=store)
+    compressor = Blosc(cname="zstd", clevel=1, shuffle=Blosc.SHUFFLE)
+    # compressor = None
+
     fused_image_store = root.create(
         "0",
         shape=fused_image_shape,
-        chunks=(4, 2048, 2048),
+        chunks=chunk_shape,
         dtype="i2",
-        compressor=Blosc(cname="zstd", clevel=4, shuffle=Blosc.SHUFFLE),
+        compressor=compressor,
     )
+    blosc.set_nthreads(16)
 
-    coordinate_transformations = [
-        [{"type": "scale", "scale": [5.0, 2.6, 2.6]}],
-        [{"type": "scale", "scale": [5.0, 5.2, 5.2]}],
-        [{"type": "scale", "scale": [5.0, 10.4, 10.4]}],
-        [{"type": "scale", "scale": [5.0, 20.8, 20.8]}],
-        [{"type": "scale", "scale": [5.0, 41.6, 41.6]}],
-    ]
+    num_tiles + len(coordinate_transformations)
+    # new_image = da.zeros(fused_image_shape, chunks=chunk_shape, dtype="i2")
 
     for i in range(num_tiles - 1, -1, -1):
         x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
         curr_tile = tiles[i]
-        fused_image_store[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile
+        if contrast_scale_factors[i] != 1.0:
+            curr_tile = da.multiply(
+                curr_tile, contrast_scale_factors[i], dtype=np.float16
+            ).astype(np.int16)
+        if num_channels > 1:
+            channel_idx = int(slice_attributes[tile_names[i]]["channel"])
+            fused_image_store[
+                channel_idx, z_s:z_e, y_s:y_e, x_s:x_e
+            ] = curr_tile.compute()
+        else:
+            fused_image_store[z_s:z_e, y_s:y_e, x_s:x_e] = curr_tile.compute()
 
-        print("Done tile " + str(i))
+        print(f"Done tile {i}")
+
+        # if yield_progress:
+        #     yield int(100 * (num_tiles - i) / total_work)
+
+    # new_image.store(fused_image_store)
 
     for i in range(1, len(coordinate_transformations)):
         prev_resolution = da.from_zarr(root[f"{i - 1}"])
-        downsampled_image = downscale_nearest(prev_resolution, (1, 2, 2))
+
+        if num_channels > 1:
+            downsampled_image = downscale_nearest(
+                prev_resolution, (1, 1, 2, 2)
+            )
+            chunk_shape = (1, 2, (2048 // 2**i), (2048 // 2**i))
+        else:
+            downsampled_image = downscale_nearest(prev_resolution, (1, 2, 2))
+            chunk_shape = (2, (2048 // 2**i), (2048 // 2**i))
+
         downsampled_shape = downsampled_image.shape
         downsampled_store = root.require_dataset(
             f"{i}",
             shape=downsampled_shape,
-            chunks=(4, (2048 // 2**i), (2048 // 2**i)),
+            chunks=chunk_shape,
             dtype="i2",
-            compressor=Blosc(cname="zstd", clevel=4, shuffle=Blosc.SHUFFLE),
+            compressor=compressor,
         )
         downsampled_image.to_zarr(downsampled_store)
+
+        # if yield_progress:
+        #     yield int(100 * (num_tiles + i) / total_work)
 
     datasets = []
 
@@ -186,24 +338,29 @@ def fuse_to_zarr(
     write_multiscales_metadata(
         group=root,
         datasets=datasets,
-        axes=[
-            {"name": "z", "type": "space", "unit": "micrometer"},
-            {"name": "y", "type": "space", "unit": "micrometer"},
-            {"name": "x", "type": "space", "unit": "micrometer"},
-        ],
+        axes=axes,
     )
 
-    root.attrs["omero"] = {
-        "channels": [
+    possible_channel_colors = [
+        "00FF00",
+        "FF0000",
+        "0000FF",
+        "FFFF00",
+        "00FFFF",
+        "FF00FF",
+    ]
+    channels = []
+    for i in range(num_channels):
+        channels.append(
             {
-                "window": {"start": 0, "end": 1200, "min": 0, "max": 65535},
-                "label": "stitched",
                 "active": True,
+                "color": possible_channel_colors[i],
+                "name": f"ch{i+1}",
+                "window": {"start": 0, "end": 4000, "min": 0, "max": 65535},
             }
-        ]
-    }
+        )
 
-    # write_ome_zarr(output_path, fused_image, overwrite=True)
+    root.attrs["omero"] = {"channels": channels}
 
 
 def fuse_to_bdv_h5(
@@ -280,7 +437,13 @@ def fuse_to_bdv_h5(
     output_file.close()
 
 
-def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
+def write_ome_zarr(
+    output_path: Path,
+    image: da,
+    tile_metadata: List[Dict],
+    num_channels: int,
+    overwrite: bool = False,
+):
     if output_path.exists() and overwrite:
         rmtree(output_path)
     else:
@@ -292,23 +455,81 @@ def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
     store = parse_url(output_path, mode="w").store
     root = zarr.group(store=store)
     compressor = Blosc(cname="zstd", clevel=4, shuffle=Blosc.SHUFFLE)
-    write_image(
-        image=image,
-        group=root,
-        axes=[
+
+    x_y_resolution = tile_metadata[0]["Pixelsize in um"]
+    z_resolution = tile_metadata[0]["z_stepsize"]
+    coordinate_transformations = [
+        [
+            {
+                "type": "scale",
+                "scale": [z_resolution, x_y_resolution, x_y_resolution],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 2,
+                    x_y_resolution * 2,
+                ],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 4,
+                    x_y_resolution * 4,
+                ],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 8,
+                    x_y_resolution * 8,
+                ],
+            }
+        ],
+        [
+            {
+                "type": "scale",
+                "scale": [
+                    z_resolution,
+                    x_y_resolution * 16,
+                    x_y_resolution * 16,
+                ],
+            }
+        ],
+    ]
+
+    chunk_shape: Tuple[int, ...] = (2, 2048, 2048)
+    axes = [
+        {"name": "z", "type": "space", "unit": "micrometer"},
+        {"name": "y", "type": "space", "unit": "micrometer"},
+        {"name": "x", "type": "space", "unit": "micrometer"},
+    ]
+
+    if len(image.shape) == 4:
+        chunk_shape = (image.shape[0], 2, 2048, 2048)
+        axes = [
+            {"name": "c", "type": "channel"},
             {"name": "z", "type": "space", "unit": "micrometer"},
             {"name": "y", "type": "space", "unit": "micrometer"},
             {"name": "x", "type": "space", "unit": "micrometer"},
-        ],
-        coordinate_transformations=[
-            [{"type": "scale", "scale": [5.0, 2.6, 2.6]}],
-            [{"type": "scale", "scale": [5.0, 5.2, 5.2]}],
-            [{"type": "scale", "scale": [5.0, 10.4, 10.4]}],
-            [{"type": "scale", "scale": [10.0, 20.8, 20.8]}],
-            [{"type": "scale", "scale": [10.0, 41.6, 41.6]}],
-        ],
+        ]
+
+    write_image(
+        image=image,
+        group=root,
+        axes=axes,
+        coordinate_transformations=coordinate_transformations,
         storage_options=dict(
-            chunks=(2, image.shape[1], image.shape[2]),
+            chunks=chunk_shape,
             compressor=compressor,
         ),
     )
@@ -322,25 +543,3 @@ def write_ome_zarr(output_path: Path, image: da, overwrite: bool):
             }
         ]
     }
-
-
-if __name__ == "__main__":
-    output_xml_path = Path(
-        "/home/igor/NIU-dev/stitching_dataset/" "One_Channel/test.xml"
-    )
-
-    xml_path = Path(
-        "/home/igor/NIU-dev/stitching_dataset/"
-        "One_Channel/2.5x_tile_igor_rightonly_Mag2.5x_"
-        "ch488_ch561_ch647_bdv.xml"
-    )
-
-    input_path = Path(
-        "/home/igor/NIU-dev/stitching_dataset/One_Channel/test.h5"
-    )
-
-    output_path = Path(
-        "/home/igor/NIU-dev/stitching_dataset/One_Channel/test_out.h5"
-    )
-
-    fuse_image(xml_path, input_path, output_path)

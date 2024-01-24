@@ -34,25 +34,16 @@ if (allChannels == 1) {
     run(
         "Calculate pairwise shifts ...",
         "select=" + xmlPath +
-        " process_angle=[All angles] process_channel=[Single channel (Select from List)] process_illumination=[All illuminations]" +
-        " process_tile=[All tiles] process_timepoint=[All Timepoints] processing_channel=[channel " + selectedChannel +" nm]" +
-        " method=[Phase Correlation] channels=[Average Channels]" +
+        " process_angle=[All angles] process_channel=[All channels] process_illumination=[All illuminations]" +
+        " process_tile=[All tiles] process_timepoint=[All Timepoints]" +
+        " method=[Phase Correlation] channels=[use Channel " + selectedChannel + " nm]" +
         " downsample_in_x=" + downSampleX +
         " downsample_in_y=" + downSampleY +
         " downsample_in_z=" + downSampleZ
     );
 }
 
-run(
-    "Calculate pairwise shifts ...",
-    "select=" + xmlPath +
-    " process_angle=[All angles] process_channel=[All channels] process_illumination=[All illuminations]" +
-    " process_tile=[All tiles] process_timepoint=[All Timepoints]" +
-    " method=[Phase Correlation] channels=[Average Channels]" +
-    " downsample_in_x=4 downsample_in_y=4 downsample_in_z=4"
-);
-
-print("Optimizing globally and applying shifts")
+print("Optimizing globally and applying shifts");
 run(
     "Optimize globally and apply shifts ...",
     "select=" + xmlPath +
