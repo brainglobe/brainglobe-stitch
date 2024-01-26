@@ -13,7 +13,7 @@ from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_image, write_multiscales_metadata
 
-from mesospim_stitcher.file_utils import write_bdv_xml
+from mesospim_stitcher.file_utils import get_slice_attributes, write_bdv_xml
 
 
 def fuse_image(
@@ -21,7 +21,7 @@ def fuse_image(
     input_path: Path,
     output_path: Path,
     tile_metadata: List[Dict],
-    contrast_limits: List[float],
+    intensity_scale_factors: List[float],
     num_channels: int = 1,
     yield_progress: bool = False,
 ):
@@ -36,35 +36,7 @@ def fuse_image(
         xml_path, x_size, y_size, z_size
     )
 
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-    view_setups = root.findall(".//ViewSetup//attributes")
-
-    slice_attributes = {}
-    for child, name in zip(view_setups, tile_names):
-        sub_dict = {}
-        for sub_child in child:
-            sub_dict[sub_child.tag] = sub_child.text
-
-        slice_attributes[name] = sub_dict
-
-    channel_max_contrast = np.zeros(num_channels, dtype=np.int16)
-
-    for contrast, tile_name in zip(contrast_limits, tile_names):
-        channel_idx = int(slice_attributes[tile_name]["channel"])
-        channel_max_contrast[channel_idx] = max(
-            channel_max_contrast[channel_idx], contrast
-        )
-
-    contrast_scale_factors = []
-
-    for contrast, tile_name in zip(contrast_limits, tile_names):
-        channel_idx = int(slice_attributes[tile_name]["channel"])
-        contrast_scale_factors.append(
-            channel_max_contrast[channel_idx] / contrast
-        )
-
-    contrast_scale_factors = np.array(contrast_scale_factors, dtype=np.float16)
+    slice_attributes = get_slice_attributes(xml_path, tile_names)
 
     fused_image_shape = (
         max(tile_position[5] for tile_position in tile_positions),
@@ -72,16 +44,19 @@ def fuse_image(
         max(tile_position[1] for tile_position in tile_positions),
     )
 
+    num_tiles = len(tile_names)
+
     if output_path.suffix == ".zarr":
         fuse_to_zarr(
             fused_image_shape,
             group,
             output_path,
             tile_names,
+            num_tiles,
             tile_positions,
             tile_metadata,
             slice_attributes,
-            contrast_scale_factors,
+            intensity_scale_factors,
             num_channels,
             yield_progress,
         )
@@ -91,8 +66,11 @@ def fuse_image(
             group,
             output_path,
             tile_names,
+            num_tiles,
             tile_positions,
+            slice_attributes,
             xml_path,
+            num_channels,
         )
 
     input_file.close()
@@ -177,17 +155,17 @@ def fuse_to_zarr(
     group: h5py.Group,
     output_path: Path,
     tile_names: List[str],
+    num_tiles: int,
     translations: List[List[int]],
     tile_metadata: List[Dict],
     slice_attributes: Dict[str, Dict[str, str]],
-    contrast_scale_factors: List[float],
+    intensity_scale_factors: List[float],
     num_channels: int,
     yield_progress: bool,
 ):
     print("Fusing to zarr")
-    num_tiles = len(tile_names)
 
-    chunk_shape: Tuple[int, ...] = (2, 2048, 2048)
+    chunk_shape: Tuple[int, ...] = (128, 256, 256)
     tiles = []
 
     for child in group:
@@ -267,7 +245,6 @@ def fuse_to_zarr(
     store = zarr.NestedDirectoryStore(str(output_path))
     root = zarr.group(store=store)
     compressor = Blosc(cname="zstd", clevel=1, shuffle=Blosc.SHUFFLE)
-    # compressor = None
 
     fused_image_store = root.create(
         "0",
@@ -276,20 +253,20 @@ def fuse_to_zarr(
         dtype="i2",
         compressor=compressor,
     )
-    blosc.set_nthreads(16)
+    blosc.set_nthreads(24)
 
-    num_tiles + len(coordinate_transformations)
-    # new_image = da.zeros(fused_image_shape, chunks=chunk_shape, dtype="i2")
+    # total_work = num_tiles + len(coordinate_transformations)
 
     for i in range(num_tiles - 1, -1, -1):
         x_s, x_e, y_s, y_e, z_s, z_e = translations[i]
         curr_tile = tiles[i]
-        if contrast_scale_factors[i] != 1.0:
+        channel_idx = int(slice_attributes[tile_names[i]]["channel"])
+        if intensity_scale_factors[i] != 1.0:
             curr_tile = da.multiply(
-                curr_tile, contrast_scale_factors[i], dtype=np.float16
+                curr_tile, intensity_scale_factors[i], dtype=np.float16
             ).astype(np.int16)
+
         if num_channels > 1:
-            channel_idx = int(slice_attributes[tile_names[i]]["channel"])
             fused_image_store[
                 channel_idx, z_s:z_e, y_s:y_e, x_s:x_e
             ] = curr_tile.compute()
@@ -310,10 +287,10 @@ def fuse_to_zarr(
             downsampled_image = downscale_nearest(
                 prev_resolution, (1, 1, 2, 2)
             )
-            chunk_shape = (1, 2, (2048 // 2**i), (2048 // 2**i))
+            chunk_shape = (1, 64, 128, 128)
         else:
             downsampled_image = downscale_nearest(prev_resolution, (1, 2, 2))
-            chunk_shape = (2, (2048 // 2**i), (2048 // 2**i))
+            chunk_shape = (64, 128, 128)
 
         downsampled_shape = downsampled_image.shape
         downsampled_store = root.require_dataset(
@@ -364,41 +341,46 @@ def fuse_to_zarr(
 
 
 def fuse_to_bdv_h5(
-    fused_image_shape: tuple[int, int, int],
+    fused_image_shape: Tuple[int, int, int],
     group: h5py.Group,
     output_path: Path,
-    tile_names: list,
-    translations: list,
+    tile_names: List[str],
+    num_tiles: int,
+    translations: List[List[int]],
+    slice_attributes: Dict[str, Dict[str, str]],
     xml_path: Path,
+    num_channels: int = 1,
 ):
-    num_tiles = len(tile_names)
-
     output_file = h5py.File(output_path, mode="w")
     ds = output_file.require_dataset(
         "t00000/s00/0/cells",
         shape=fused_image_shape,
         dtype="i2",
     )
+
     subdivisions = np.array(
-        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]],
+        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]],
         dtype=np.int16,
     )
     resolutions = np.array(
-        [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1]],
+        [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]],
         dtype=np.int16,
     )
-    output_file.require_dataset(
-        "s00/resolutions",
-        data=resolutions,
-        dtype="i2",
-        shape=resolutions.shape,
-    )
-    output_file.require_dataset(
-        "s00/subdivisions",
-        data=subdivisions,
-        dtype="i2",
-        shape=subdivisions.shape,
-    )
+
+    for i in range(num_channels):
+        output_file.require_dataset(
+            f"s{i:02}/resolutions",
+            data=resolutions,
+            dtype="i2",
+            shape=resolutions.shape,
+        )
+        output_file.require_dataset(
+            f"s{i:02}/subdivisions",
+            data=subdivisions,
+            dtype="i2",
+            shape=subdivisions.shape,
+        )
+
     ds_list = [ds]
     for i in range(1, resolutions.shape[0]):
         ds_list.append(
@@ -433,7 +415,7 @@ def fuse_to_bdv_h5(
                 :: resolutions[j][0],
             ]
 
-    write_bdv_xml(Path("testing.xml"), xml_path, output_path, ds.shape)
+    write_bdv_xml(Path("testing.xml"), xml_path, output_path, ds[0].shape)
     output_file.close()
 
 
@@ -543,3 +525,18 @@ def write_ome_zarr(
             }
         ]
     }
+
+
+def calculate_image_stats(image: da) -> Tuple[float, float, float, float]:
+    # min_intensity = image.min().compute()
+    # max_intensity = image.max().compute()
+    num_pixels = image.shape[0] * image.shape[1] * image.shape[2]
+    raveled_image = image.ravel()
+    top_min = raveled_image.topk(-int(num_pixels * 0.00001)).compute()
+    top_max = raveled_image.topk(int(num_pixels * 0.00001)).compute()
+    true_min = top_min[0]
+    clean_min = top_min[-1]
+    true_max = top_max[0]
+    clean_max = top_max[-1]
+
+    return clean_min, clean_max, true_min, true_max

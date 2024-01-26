@@ -12,20 +12,25 @@ from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
 from qtpy.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
+from superqt import QCollapsible
 
 from mesospim_stitcher.big_stitcher_bridge import run_big_stitcher
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
+    get_slice_attributes,
     parse_mesospim_metadata,
     write_big_stitcher_tile_config,
 )
@@ -51,8 +56,11 @@ class StitchingWidget(QWidget):
         self.tile_config_path: Path | None = None
         self.imagej_path: Path | None = None
         self.h5_file: h5py.File | None = None
+        self.slice_attributes: Dict[str, Dict] = {}
+        self.intensity_scale_factors: List[float] = []
         self.tiles: List[da] = []
         self.tile_layers: List[napari.layers.Image] = []
+        self.tile_names: List[str] = []
         self.tile_metadata: List[Dict] = []
         self.num_channels: int = 1
         self.original_image_shape: Tuple[int, int, int] | None = None
@@ -134,6 +142,65 @@ class StitchingWidget(QWidget):
         self.stitch_button.clicked.connect(self._on_stitch_button_clicked)
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
+
+        self.adjust_intensity_button = QPushButton("Adjust Intensity")
+        self.adjust_intensity_button.clicked.connect(
+            self._on_adjust_intensity_button_clicked
+        )
+        self.adjust_intensity_button.setEnabled(False)
+        self.layout().addWidget(self.adjust_intensity_button)
+
+        self.adjust_intensity_collapsible = QCollapsible(
+            "Intensity Adjustment Options"
+        )
+        self.adjust_intensity_menu = QWidget()
+        self.adjust_intensity_menu.setLayout(
+            QFormLayout(parent=self.adjust_intensity_menu)
+        )
+
+        self.horizontal_fraction_field = QDoubleSpinBox(
+            parent=self.adjust_intensity_menu
+        )
+        self.horizontal_fraction_field.setRange(0, 1)
+        self.horizontal_fraction_field.setSingleStep(0.01)
+        self.horizontal_fraction_field.setValue(0.25)
+        self.adjust_intensity_menu.layout().addRow(
+            "Horizontal Fraction", self.horizontal_fraction_field
+        )
+
+        self.vertical_fraction_field = QDoubleSpinBox(
+            parent=self.adjust_intensity_menu
+        )
+        self.vertical_fraction_field.setRange(0, 1)
+        self.vertical_fraction_field.setSingleStep(0.01)
+        self.vertical_fraction_field.setValue(0.5)
+        self.adjust_intensity_menu.layout().addRow(
+            "Vertical Fraction", self.vertical_fraction_field
+        )
+
+        self.depth_fraction_field = QDoubleSpinBox(
+            parent=self.adjust_intensity_menu
+        )
+        self.depth_fraction_field.setRange(0, 1)
+        self.depth_fraction_field.setSingleStep(0.01)
+        self.depth_fraction_field.setValue(1)
+        self.adjust_intensity_menu.layout().addRow(
+            "Depth Fraction", self.depth_fraction_field
+        )
+
+        self.percentile_field = QSpinBox(parent=self.adjust_intensity_menu)
+        self.percentile_field.setRange(0, 100)
+        self.percentile_field.setValue(80)
+        self.adjust_intensity_menu.layout().addRow(
+            "Percentile", self.percentile_field
+        )
+
+        self.adjust_intensity_collapsible.setContent(
+            self.adjust_intensity_menu
+        )
+
+        self.layout().addWidget(self.adjust_intensity_collapsible)
+        self.adjust_intensity_collapsible.collapse(animate=False)
 
         self.fuse_button = QPushButton("Fuse")
         self.fuse_button.clicked.connect(self._on_fuse_button_clicked)
@@ -226,6 +293,11 @@ class StitchingWidget(QWidget):
         self.tiles = []
         tile_group = self.h5_file["t00000"]
 
+        self.tile_names = list(tile_group.keys())
+        self.slice_attributes = get_slice_attributes(
+            self.xml_path, self.tile_names
+        )
+
         for idx, child in enumerate(tile_group):
             try:
                 curr_tile = da.from_array(
@@ -240,8 +312,7 @@ class StitchingWidget(QWidget):
             tile = self._viewer.add_image(
                 curr_tile,
                 blending="translucent",
-                opacity=0.6,
-                contrast_limits=[0, 2000],
+                contrast_limits=[0, 4000],
                 multiscale=False,
                 name=child,
             )
@@ -262,7 +333,7 @@ class StitchingWidget(QWidget):
 
             return
 
-        # Use a worker to run the stitching in a separate thread
+        # Need to use a worker to run the stitching in a separate thread
         results = run_big_stitcher(
             self.imagej_path,
             self.xml_path,
@@ -295,20 +366,72 @@ class StitchingWidget(QWidget):
             tile.translate = translation
 
         self.fuse_button.setEnabled(True)
+        self.adjust_intensity_button.setEnabled(True)
+
+        return
+
+    def _on_adjust_intensity_button_clicked(self):
+        downsampled_stacks = []
+        tile_group = self.h5_file["t00000"]
+        downsampled_size = tile_group["s00/3/cells"].shape
+        z_size, y_size, x_size = downsampled_size
+
+        for idx, tile in enumerate(tile_group):
+            # z stack limit threshold not implemented
+            if self.translations[idx][2] < 40:
+                xs = int(x_size * (1 - self.horizontal_fraction_field.value()))
+                xe = x_size
+            else:
+                xs = 0
+                xe = int(x_size * self.horizontal_fraction_field.value())
+
+            if self.translations[idx][1] < 40:
+                ys = int(y_size * (1 - self.vertical_fraction_field.value()))
+                ye = y_size
+            else:
+                ys = 0
+                ye = int(y_size * self.vertical_fraction_field.value())
+
+            downsampled_stacks.append(
+                da.from_array(tile_group[f"{tile}/3/cells"][:, ys:ye, xs:xe])
+            )
+
+        percentile_intensity = []
+        max_percentile_intensity = np.zeros((self.num_channels, 1))
+        for idx, stack in enumerate(downsampled_stacks):
+            percentile = np.percentile(
+                stack.compute(), self.percentile_field.value()
+            )
+            channel_idx = int(
+                self.slice_attributes[self.tile_names[idx]]["channel"]
+            )
+
+            if percentile > max_percentile_intensity[channel_idx]:
+                max_percentile_intensity[channel_idx] = percentile
+
+            percentile_intensity.append(percentile)
+
+        self.intensity_scale_factors = []
+        for idx, tile_layer in enumerate(self.tile_layers):
+            channel_idx = int(
+                self.slice_attributes[self.tile_names[idx]]["channel"]
+            )
+            scale_factor = (
+                max_percentile_intensity[channel_idx]
+                / percentile_intensity[idx]
+            )
+            tile_layer.data = da.multiply(self.tiles[idx], scale_factor)
+            self.intensity_scale_factors.append(scale_factor)
 
         return
 
     def _on_fuse_button_clicked(self):
-        contrast_limits = np.array(
-            [tile.contrast_limits[1] for tile in self.tile_layers],
-            dtype=np.int16,
-        )
         fuse_image(
             self.xml_path,
             self.h5_path,
             self.h5_path.with_suffix(".zarr"),
             self.tile_metadata,
-            contrast_limits,
+            self.intensity_scale_factors,
             self.num_channels,
             yield_progress=False,
         )
@@ -335,3 +458,9 @@ class StitchingWidget(QWidget):
             self.stitch_button.setEnabled(True)
         else:
             show_warning("ImageJ path not valid")
+
+    #
+    # def hideEvent(self, a0, QHideEvent=None):
+    #     super().hideEvent(a0)
+    #     if self.h5_file:
+    #         self.h5_file.close()

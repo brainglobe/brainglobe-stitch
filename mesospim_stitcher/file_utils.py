@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Dict, List
 
 import h5py
 import numpy as np
@@ -262,3 +263,21 @@ def check_mesospim_directory(
         raise FileNotFoundError("Expected 1 h5 file, found {len(h5_path)}")
 
     return xml_path[0], meta_path[0], h5_path[0]
+
+
+def get_slice_attributes(
+    xml_path: Path, tile_names: List[str]
+) -> Dict[str, Dict]:
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    view_setups = root.findall(".//ViewSetup//attributes")
+
+    slice_attributes = {}
+    for child, name in zip(view_setups, tile_names):
+        sub_dict = {}
+        for sub_child in child:
+            sub_dict[sub_child.tag] = sub_child.text
+
+        slice_attributes[name] = sub_dict
+
+    return slice_attributes
