@@ -243,11 +243,11 @@ def fuse_to_zarr(
             {"name": "x", "type": "space", "unit": "micrometer"},
         ]
 
-    overlaps = calculate_overlaps(translations)
-    adjust_contrast(intensity_scale_factors, tiles)
-    interpolate_overlaps(
-        overlaps, tiles, slice_attributes, tile_names, translations
-    )
+    # overlaps = calculate_overlaps(translations)
+    # adjust_contrast(intensity_scale_factors, tiles)
+    # interpolate_overlaps(
+    #     overlaps, tiles, slice_attributes, tile_names, translations
+    # )
 
     store = zarr.NestedDirectoryStore(str(output_path))
     root = zarr.group(store=store)
@@ -577,12 +577,11 @@ def calculate_scale_factors(
             if ((curr_tile.id, next_tile.id) in overlaps) and (
                 curr_tile.channel_id == next_tile.channel_id
             ):
-                i_overlap, j_overlap = extract_overlap_data(
+                i_overlap, j_overlap, _, _ = extract_overlap_data(
                     overlaps[(curr_tile.id, next_tile.id)],
                     curr_tile,
                     next_tile,
-                    curr_tile.downsampled_data,
-                    next_tile.downsampled_data,
+                    full_res=False,
                 )
 
                 median_i = np.percentile(i_overlap.ravel(), percentile)
@@ -618,164 +617,109 @@ def adjust_contrast(intensity_scale_factors, images):
 
 
 def interpolate_overlaps(
-    overlaps, images, slice_attributes, tile_names, translations
+    overlaps, tile_objects: List[Tile], full_res: bool = False
 ):
-    num_tiles = len(images)
-    z_size, y_size, x_size = images[0].shape
+    assert tile_objects[0].data is not None, "No data found in tile objects"
+    if full_res:
+        z_size, y_size, x_size = tile_objects[0].data.shape
+    else:
+        z_size, y_size, x_size = tile_objects[0].downsampled_data.shape
 
-    for i in range(num_tiles):
-        channel_idx = int(slice_attributes[tile_names[i]]["channel"])
-        for j in range(i + 1, num_tiles):
-            if (i, j) in overlaps:
-                other_channel_idx = int(
-                    slice_attributes[tile_names[j]]["channel"]
+    for curr_tile in tile_objects[:-1]:
+        for next_tile in tile_objects[curr_tile.id + 1 :]:
+            if ((curr_tile.id, next_tile.id) in overlaps) and (
+                curr_tile.channel_id == next_tile.channel_id
+            ):
+                (
+                    i_overlap,
+                    j_overlap,
+                    i_indices,
+                    j_indices,
+                ) = extract_overlap_data(
+                    overlaps[(curr_tile.id, next_tile.id)],
+                    curr_tile,
+                    next_tile,
+                    full_res=full_res,
                 )
-                if channel_idx == other_channel_idx:
-                    (
-                        x_overlap_s,
-                        x_overlap_e,
-                        y_overlap_s,
-                        y_overlap_e,
-                        z_overlap_s,
-                        z_overlap_e,
-                    ) = overlaps[(i, j)]
-                    x_overlap = x_overlap_e - x_overlap_s
-                    y_overlap = y_overlap_e - y_overlap_s
-                    z_overlap = z_overlap_e - z_overlap_s
 
-                    if translations[i][0] < translations[j][0]:
-                        i_x_s = x_size - x_overlap
-                        i_x_e = x_size
-                        j_x_s = 0
-                        j_x_e = x_overlap
+                x_overlap_size = i_overlap.shape[2]
+                y_overlap_size = i_overlap.shape[1]
+
+                if (
+                    x_overlap_size / x_size < 0.2
+                    and y_overlap_size / y_size < 0.2
+                ):
+                    # Skip the small diagonal overlaps
+                    continue
+
+                elif x_overlap_size / x_size < 0.2:
+                    x_lin = np.linspace(1, 0, x_overlap_size)
+
+                    # 1 in the first column,
+                    # linearly decreasing to 0 in the last column
+                    yx_grid = np.tile(x_lin, (y_overlap_size, 1))
+
+                    if (
+                        curr_tile.stitched_position[2]
+                        < next_tile.stitched_position[2]
+                    ):
+                        decreasing_image = i_overlap
+                        increasing_image = j_overlap
                     else:
-                        i_x_s = 0
-                        i_x_e = x_overlap
-                        j_x_s = x_size - x_overlap
-                        j_x_e = x_size
+                        decreasing_image = j_overlap
+                        increasing_image = i_overlap
+                else:
+                    y_lin = np.linspace(1, 0, y_overlap_size)
 
-                    if translations[i][2] < translations[j][2]:
-                        i_y_s = y_size - y_overlap
-                        i_y_e = y_size
-                        j_y_s = 0
-                        j_y_e = y_overlap
+                    # 1 in the first row,
+                    # linearly decreasing to 0 in the last row
+                    yx_grid = np.tile(y_lin, (x_overlap_size, 1)).T
+
+                    if (
+                        curr_tile.stitched_position[1]
+                        < next_tile.stitched_position[1]
+                    ):
+                        decreasing_image = i_overlap
+                        increasing_image = j_overlap
                     else:
-                        i_y_s = 0
-                        i_y_e = y_overlap
-                        j_y_s = y_size - y_overlap
-                        j_y_e = y_size
+                        decreasing_image = j_overlap
+                        increasing_image = i_overlap
 
-                    if translations[i][4] < translations[j][4]:
-                        i_z_s = z_size - z_overlap
-                        i_z_e = z_size
-                        j_z_s = 0
-                        j_z_e = z_overlap
-                    else:
-                        i_z_s = 0
-                        i_z_e = z_overlap
-                        j_z_s = z_size - z_overlap
-                        j_z_e = z_size
+                interp = (
+                    np.multiply(
+                        decreasing_image.compute(),
+                        yx_grid,
+                        dtype=np.float16,
+                    )
+                    + np.multiply(
+                        increasing_image.compute(),
+                        1 - yx_grid,
+                        dtype=np.float16,
+                    )
+                ).astype(np.int16)
 
-                    if x_overlap / x_size < 0.2 and y_overlap / y_size < 0.2:
-                        # Skip the small diagonal overlaps
-                        # continue
-                        x_lin = np.linspace(1, 0, x_overlap)
-                        y_lin = np.linspace(1, 0, y_overlap)
+                i_z_s, i_z_e, i_y_s, i_y_e, i_x_s, i_x_e = i_indices
+                j_z_s, j_z_e, j_y_s, j_y_e, j_x_s, j_x_e = j_indices
 
-                        # 1 at 0, 0 linearly decreasing to 0 at 1,
-                        # 1 along the diagonal
-                        yx_grid = np.outer(y_lin, x_lin)
+                if full_res:
+                    curr_tile.data[
+                        i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
+                    ] = interp
+                    next_tile.data[
+                        j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
+                    ] = interp
+                else:
+                    curr_tile.downsampled_data[
+                        i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
+                    ] = interp
+                    next_tile.downsampled_data[
+                        j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
+                    ] = interp
 
-                        if translations[i][0] < translations[j][0]:
-                            decreasing_image = images[i][
-                                i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
-                            ]
-                            increasing_image = images[j][
-                                j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
-                            ]
-
-                            if translations[i][2] > translations[j][2]:
-                                yx_grid = np.flip(yx_grid, 0)
-                        else:
-                            decreasing_image = images[j][
-                                j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
-                            ]
-                            increasing_image = images[i][
-                                i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
-                            ]
-
-                        # Check the direction of the diagonal.
-                        # Flip the grid if the diagonal is going from top right
-                        # to bottom left. Left to right is the default,
-                        # this is when both ys and xs of i are either
-                        # smaller or larger than j.
-                        # If the two comparisons don't match (XOR) flip grid.
-                        if (translations[i][0] < translations[j][0]) != (
-                            translations[i][2] < translations[j][2]
-                        ):
-                            if translations[i][2] < translations[j][2]:
-                                yx_grid = np.flip(yx_grid, 0)
-
-                    elif x_overlap / x_size < 0.2:
-                        x_lin = np.linspace(1, 0, x_overlap)
-
-                        # 1 in the first column,
-                        # linearly decreasing to 0 in the last column
-                        yx_grid = np.tile(x_lin, (y_overlap, 1))
-
-                        if translations[i][0] < translations[j][0]:
-                            decreasing_image = images[i][
-                                i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
-                            ]
-                            increasing_image = images[j][
-                                j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
-                            ]
-                        else:
-                            decreasing_image = images[j][
-                                j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
-                            ]
-                            increasing_image = images[i][
-                                i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
-                            ]
-                    else:
-                        y_lin = np.linspace(1, 0, y_overlap)
-
-                        # 1 in the first row,
-                        # linearly decreasing to 0 in the last row
-                        yx_grid = np.tile(y_lin, (x_overlap, 1)).T
-
-                        if translations[i][2] < translations[j][2]:
-                            decreasing_image = images[i][
-                                i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
-                            ]
-                            increasing_image = images[j][
-                                j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
-                            ]
-                        else:
-                            decreasing_image = images[j][
-                                j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e
-                            ]
-                            increasing_image = images[i][
-                                i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e
-                            ]
-
-                    interp = (
-                        np.multiply(
-                            decreasing_image.compute(),
-                            yx_grid,
-                            dtype=np.float16,
-                        )
-                        + np.multiply(
-                            increasing_image.compute(),
-                            1 - yx_grid,
-                            dtype=np.float16,
-                        )
-                    ).astype(np.int16)
-
-                    images[i][i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e] = interp
-                    images[j][j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e] = interp
-
-                    print(f"Done interpolating tile {i} and {j}")
+                print(
+                    f"Done interpolating tile {curr_tile.id}"
+                    f" and {next_tile.id}"
+                )
 
 
 def calculate_image_stats(image: da) -> Tuple[float, float, float, float]:
@@ -795,9 +739,8 @@ def extract_overlap_data(
     overlap: Tuple[int, ...],
     tile_i: Tile,
     tile_j: Tile,
-    data_i: da.Array,
-    data_j: da.Array,
-) -> Tuple[da.Array, da.Array]:
+    full_res: bool = False,
+) -> Tuple[da.Array, da.Array, Tuple[int, ...], Tuple[int, ...]]:
     (
         x_overlap_s,
         x_overlap_e,
@@ -809,6 +752,13 @@ def extract_overlap_data(
     x_overlap = x_overlap_e - x_overlap_s
     y_overlap = y_overlap_e - y_overlap_s
     z_overlap = z_overlap_e - z_overlap_s
+
+    if full_res:
+        data_i = tile_i.data
+        data_j = tile_j.data
+    else:
+        data_i = tile_i.downsampled_data
+        data_j = tile_j.downsampled_data
 
     z_size, y_size, x_size = data_i.shape
 
@@ -848,4 +798,7 @@ def extract_overlap_data(
     i_overlap = data_i[i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e]
     j_overlap = data_j[j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e]
 
-    return i_overlap, j_overlap
+    i_indices = (i_z_s, i_z_e, i_y_s, i_y_e, i_x_s, i_x_e)
+    j_indices = (j_z_s, j_z_e, j_y_s, j_y_e, j_x_s, j_x_e)
+
+    return i_overlap, j_overlap, i_indices, j_indices

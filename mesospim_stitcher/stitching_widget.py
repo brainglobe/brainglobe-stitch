@@ -420,14 +420,14 @@ class StitchingWidget(QWidget):
 
         interpolate_overlaps(
             overlaps,
-            self.tiles,
-            self.slice_attributes,
-            self.tile_names,
-            scaled_translations,
+            self.tile_objects,
+            full_res=False,
         )
 
-        for tile, new_tile in zip(self.tile_layers, self.tiles):
-            tile.data = new_tile
+        for tile_layer, tile_object in zip(
+            self.tile_layers, self.tile_objects
+        ):
+            tile_layer.data = tile_object.downsampled_data
 
         return
 
