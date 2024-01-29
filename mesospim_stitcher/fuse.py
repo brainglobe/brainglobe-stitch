@@ -14,6 +14,7 @@ from ome_zarr.io import parse_url
 from ome_zarr.writer import write_image, write_multiscales_metadata
 
 from mesospim_stitcher.file_utils import get_slice_attributes, write_bdv_xml
+from mesospim_stitcher.tile import Tile
 
 
 def fuse_image(
@@ -564,85 +565,46 @@ def calculate_overlaps(translations):
 
 
 def calculate_scale_factors(
-    overlaps, images, slice_attributes, tile_names, translations, percentile
+    overlaps: Dict[Tuple[int, int], Tuple[int, ...]],
+    tile_objects: List[Tile],
+    percentile,
 ):
-    # nodes_visited = set()
-    num_tiles = len(images)
+    num_tiles = len(tile_objects)
     scale_factors = np.ones((num_tiles, num_tiles))
-    z_size, y_size, x_size = images[0].shape
 
-    for i in range(num_tiles):
-        channel_idx = int(slice_attributes[tile_names[i]]["channel"])
-        for j in range(i + 1, num_tiles):
-            if (i, j) in overlaps:
-                other_channel_idx = int(
-                    slice_attributes[tile_names[j]]["channel"]
+    for curr_tile in tile_objects[:-1]:
+        for next_tile in tile_objects[curr_tile.id + 1 :]:
+            if ((curr_tile.id, next_tile.id) in overlaps) and (
+                curr_tile.channel_id == next_tile.channel_id
+            ):
+                i_overlap, j_overlap = extract_overlap_data(
+                    overlaps[(curr_tile.id, next_tile.id)],
+                    curr_tile,
+                    next_tile,
+                    curr_tile.downsampled_data,
+                    next_tile.downsampled_data,
                 )
-                if channel_idx == other_channel_idx:
-                    (
-                        x_overlap_s,
-                        x_overlap_e,
-                        y_overlap_s,
-                        y_overlap_e,
-                        z_overlap_s,
-                        z_overlap_e,
-                    ) = overlaps[(i, j)]
-                    x_overlap = x_overlap_e - x_overlap_s
-                    y_overlap = y_overlap_e - y_overlap_s
-                    z_overlap = z_overlap_e - z_overlap_s
 
-                    if translations[i][0] < translations[j][0]:
-                        i_x_s = x_size - x_overlap
-                        i_x_e = x_size
-                        j_x_s = 0
-                        j_x_e = x_overlap
-                    else:
-                        i_x_s = 0
-                        i_x_e = x_overlap
-                        j_x_s = x_size - x_overlap
-                        j_x_e = x_size
+                median_i = np.percentile(i_overlap.ravel(), percentile)
+                median_j = np.percentile(j_overlap.ravel(), percentile)
 
-                    if translations[i][2] < translations[j][2]:
-                        i_y_s = y_size - y_overlap
-                        i_y_e = y_size
-                        j_y_s = 0
-                        j_y_e = y_overlap
-                    else:
-                        i_y_s = 0
-                        i_y_e = y_overlap
-                        j_y_s = y_size - y_overlap
-                        j_y_e = y_size
+                curr_scale_factor = (median_i / median_j).compute()
+                scale_factors[curr_tile.id][next_tile.id] = curr_scale_factor[
+                    0
+                ]
 
-                    if translations[i][4] < translations[j][4]:
-                        i_z_s = z_size - z_overlap
-                        i_z_e = z_size
-                        j_z_s = 0
-                        j_z_e = z_overlap
-                    else:
-                        i_z_s = 0
-                        i_z_e = z_overlap
-                        j_z_s = z_size - z_overlap
-                        j_z_e = z_size
+                del i_overlap
+                del j_overlap
+                del median_i
+                del median_j
 
-                    i_image = images[i][i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e]
-                    j_image = images[j][j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e]
+                next_tile.downsampled_data = np.multiply(
+                    next_tile.downsampled_data,
+                    curr_scale_factor,
+                    dtype=np.float16,
+                ).astype(np.int16)
 
-                    median_i = np.percentile(i_image.ravel(), percentile)
-                    median_j = np.percentile(j_image.ravel(), percentile)
-
-                    curr_scale_factor = (median_i / median_j).compute()
-                    scale_factors[i][j] = curr_scale_factor[0]
-
-                    del i_image
-                    del j_image
-                    del median_i
-                    del median_j
-
-                    images[j] = np.multiply(
-                        images[j], curr_scale_factor, dtype=np.float16
-                    ).astype(np.int16)
-
-    return scale_factors, images
+    return scale_factors, tile_objects
 
 
 def adjust_contrast(intensity_scale_factors, images):
@@ -827,3 +789,63 @@ def calculate_image_stats(image: da) -> Tuple[float, float, float, float]:
     clean_max = top_max[-1]
 
     return clean_min, clean_max, true_min, true_max
+
+
+def extract_overlap_data(
+    overlap: Tuple[int, ...],
+    tile_i: Tile,
+    tile_j: Tile,
+    data_i: da.Array,
+    data_j: da.Array,
+) -> Tuple[da.Array, da.Array]:
+    (
+        x_overlap_s,
+        x_overlap_e,
+        y_overlap_s,
+        y_overlap_e,
+        z_overlap_s,
+        z_overlap_e,
+    ) = overlap
+    x_overlap = x_overlap_e - x_overlap_s
+    y_overlap = y_overlap_e - y_overlap_s
+    z_overlap = z_overlap_e - z_overlap_s
+
+    z_size, y_size, x_size = data_i.shape
+
+    if tile_i.stitched_position[2] < tile_j.stitched_position[2]:
+        i_x_s = x_size - x_overlap
+        i_x_e = x_size
+        j_x_s = 0
+        j_x_e = x_overlap
+    else:
+        i_x_s = 0
+        i_x_e = x_overlap
+        j_x_s = x_size - x_overlap
+        j_x_e = x_size
+
+    if tile_i.stitched_position[1] < tile_j.stitched_position[1]:
+        i_y_s = y_size - y_overlap
+        i_y_e = y_size
+        j_y_s = 0
+        j_y_e = y_overlap
+    else:
+        i_y_s = 0
+        i_y_e = y_overlap
+        j_y_s = y_size - y_overlap
+        j_y_e = y_size
+
+    if tile_i.stitched_position[0] < tile_j.stitched_position[0]:
+        i_z_s = z_size - z_overlap
+        i_z_e = z_size
+        j_z_s = 0
+        j_z_e = z_overlap
+    else:
+        i_z_s = 0
+        i_z_e = z_overlap
+        j_z_s = z_size - z_overlap
+        j_z_e = z_size
+
+    i_overlap = data_i[i_z_s:i_z_e, i_y_s:i_y_e, i_x_s:i_x_e]
+    j_overlap = data_j[j_z_s:j_z_e, j_y_s:j_y_e, j_x_s:j_x_e]
+
+    return i_overlap, j_overlap

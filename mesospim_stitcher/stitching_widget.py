@@ -12,7 +12,6 @@ from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
 from qtpy.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -41,6 +40,7 @@ from mesospim_stitcher.fuse import (
     get_big_stitcher_transforms,
     interpolate_overlaps,
 )
+from mesospim_stitcher.tile import Tile
 
 DOWNSAMPLE_ARRAY = np.array(
     [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
@@ -64,6 +64,7 @@ class StitchingWidget(QWidget):
         self.h5_file: h5py.File | None = None
         self.slice_attributes: Dict[str, Dict] = {}
         self.intensity_scale_factors: List[float] = []
+        self.tile_objects: List[Tile] = []
         self.tiles: List[da] = []
         self.tile_layers: List[napari.layers.Image] = []
         self.tile_names: List[str] = []
@@ -170,36 +171,6 @@ class StitchingWidget(QWidget):
             QFormLayout(parent=self.adjust_intensity_menu)
         )
 
-        self.horizontal_fraction_field = QDoubleSpinBox(
-            parent=self.adjust_intensity_menu
-        )
-        self.horizontal_fraction_field.setRange(0, 1)
-        self.horizontal_fraction_field.setSingleStep(0.01)
-        self.horizontal_fraction_field.setValue(0.25)
-        self.adjust_intensity_menu.layout().addRow(
-            "Horizontal Fraction", self.horizontal_fraction_field
-        )
-
-        self.vertical_fraction_field = QDoubleSpinBox(
-            parent=self.adjust_intensity_menu
-        )
-        self.vertical_fraction_field.setRange(0, 1)
-        self.vertical_fraction_field.setSingleStep(0.01)
-        self.vertical_fraction_field.setValue(0.5)
-        self.adjust_intensity_menu.layout().addRow(
-            "Vertical Fraction", self.vertical_fraction_field
-        )
-
-        self.depth_fraction_field = QDoubleSpinBox(
-            parent=self.adjust_intensity_menu
-        )
-        self.depth_fraction_field.setRange(0, 1)
-        self.depth_fraction_field.setSingleStep(0.01)
-        self.depth_fraction_field.setValue(1)
-        self.adjust_intensity_menu.layout().addRow(
-            "Depth Fraction", self.depth_fraction_field
-        )
-
         self.percentile_field = QSpinBox(parent=self.adjust_intensity_menu)
         self.percentile_field.setRange(0, 100)
         self.percentile_field.setValue(80)
@@ -276,19 +247,29 @@ class StitchingWidget(QWidget):
         else:
             self.tile_metadata = parse_mesospim_metadata(self.meta_path)
 
-        translations: List[tuple[int, int, int]] = []
+        self.h5_file = h5py.File(self.h5_path, "r")
+        self.original_image_shape = self.h5_file["t00000/s00/0/cells"].shape
+        self.tiles = []
+        tile_group = self.h5_file["t00000"]
+
+        self.tile_names = list(tile_group.keys())
+
+        for idx, name in enumerate(self.tile_names):
+            self.tile_objects.append(Tile(name, idx))
+
         with open(self.tile_config_path, "r") as f:
             # Skip header
             f.readline()
-            for line in f.readlines():
+            for line, tile in zip(f.readlines(), self.tile_objects):
                 split_line = line.split(";")[-1].strip("()\n").split(",")
-                translations.append(
-                    (
-                        int(split_line[2]),
-                        int(split_line[1]),
-                        int(split_line[0]),
-                    )
+                # BigStitcher uses x,y,z order
+                # Switch to z,y,x order
+                translation = (
+                    int(split_line[2]),
+                    int(split_line[1]),
+                    int(split_line[0]),
                 )
+                tile.set_position(translation)
 
         channel_names = []
         idx = 0
@@ -300,39 +281,56 @@ class StitchingWidget(QWidget):
         self.fuse_channel_dropdown.addItems(channel_names)
         self.num_channels = len(channel_names)
 
-        self.h5_file = h5py.File(self.h5_path, "r")
-        self.original_image_shape = self.h5_file["t00000/s00/0/cells"].shape
-        self.tiles = []
-        tile_group = self.h5_file["t00000"]
-
-        self.tile_names = list(tile_group.keys())
         self.slice_attributes = get_slice_attributes(
             self.xml_path, self.tile_names
         )
 
-        for idx, child in enumerate(tile_group):
+        for idx, tile_object in enumerate(self.tile_objects):
+            tile_object.channel_id = int(
+                self.slice_attributes[tile_object.name]["channel"]
+            )
+            tile_object.tile_id = int(
+                self.slice_attributes[tile_object.name]["tile"]
+            )
+            tile_object.illumination_id = int(
+                self.slice_attributes[tile_object.name]["illumination"]
+            )
+            tile_object.angle = float(
+                self.slice_attributes[tile_object.name]["angle"]
+            )
             try:
-                curr_tile = da.from_array(
-                    tile_group[f"{child}/{self.resolution_to_display}/cells"]
+                downsampled_tile = da.from_array(
+                    tile_group[
+                        f"{tile_object.name}/{self.resolution_to_display}/cells"
+                    ]
                 )
+                full_resolution_tile = da.from_array(
+                    tile_group[f"{tile_object.name}/0/cells"]
+                )
+                tile_object.downsampled_data = downsampled_tile
+                tile_object.data = full_resolution_tile
+                resolution_pyramid = np.array(
+                    self.h5_file[tile_object.name]["resolutions"]
+                )
+                tile_object.downsampled_factors = resolution_pyramid[
+                    self.resolution_to_display
+                ]
             except KeyError:
                 show_warning("Resolution pyramid not found")
-
                 return
 
-            self.tiles.append(curr_tile)
+            self.tiles.append(downsampled_tile)
             tile = self._viewer.add_image(
-                curr_tile,
+                downsampled_tile,
                 blending="translucent",
                 contrast_limits=[0, 4000],
                 multiscale=False,
-                name=child,
+                name=tile_object.name,
             )
 
             self.tile_layers.append(tile)
             tile.translate = (
-                translations[idx]
-                // DOWNSAMPLE_ARRAY[self.resolution_to_display]
+                tile_object.position // tile_object.downsampled_factors
             )
 
     def _on_stitch_button_clicked(self):
@@ -369,13 +367,19 @@ class StitchingWidget(QWidget):
         self.translations = get_big_stitcher_transforms(
             self.xml_path, x_size, y_size, z_size
         )
-        tile_translations = [
-            translation[-2::-2] // DOWNSAMPLE_ARRAY[self.resolution_to_display]
-            for translation in self.translations
-        ]
 
-        for tile, translation in zip(self.tile_layers, tile_translations):
-            tile.translate = translation
+        for tile_object, translation, tile_layer in zip(
+            self.tile_objects, self.translations, self.tile_layers
+        ):
+            tile_object.stitched_position = (
+                translation[4],
+                translation[2],
+                translation[0],
+            )
+            tile_layer.translate = (
+                tile_object.stitched_position
+                // tile_object.downsampled_factors
+            )
 
         self.fuse_button.setEnabled(True)
         self.adjust_intensity_button.setEnabled(True)
@@ -392,15 +396,14 @@ class StitchingWidget(QWidget):
 
         scale_factors, self.tiles = calculate_scale_factors(
             overlaps,
-            self.tiles,
-            self.slice_attributes,
-            self.tile_names,
-            scaled_translations,
+            self.tile_objects,
             self.percentile_field.value(),
         )
 
-        for tile, new_tile in zip(self.tile_layers, self.tiles):
-            tile.data = new_tile
+        for tile_layer, tile_object in zip(
+            self.tile_layers, self.tile_objects
+        ):
+            tile_layer.data = tile_object.downsampled_data
 
         self.intensity_scale_factors = np.prod(scale_factors, axis=0)
 
