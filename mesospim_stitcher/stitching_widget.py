@@ -34,7 +34,13 @@ from mesospim_stitcher.file_utils import (
     parse_mesospim_metadata,
     write_big_stitcher_tile_config,
 )
-from mesospim_stitcher.fuse import fuse_image, get_big_stitcher_transforms
+from mesospim_stitcher.fuse import (
+    calculate_overlaps,
+    calculate_scale_factors,
+    fuse_image,
+    get_big_stitcher_transforms,
+    interpolate_overlaps,
+)
 
 DOWNSAMPLE_ARRAY = np.array(
     [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
@@ -149,6 +155,12 @@ class StitchingWidget(QWidget):
         )
         self.adjust_intensity_button.setEnabled(False)
         self.layout().addWidget(self.adjust_intensity_button)
+
+        self.test_interpolation_button = QPushButton("Test Interpolation")
+        self.test_interpolation_button.clicked.connect(
+            self._on_test_interpolation_button_clicked
+        )
+        self.layout().addWidget(self.test_interpolation_button)
 
         self.adjust_intensity_collapsible = QCollapsible(
             "Intensity Adjustment Options"
@@ -357,12 +369,12 @@ class StitchingWidget(QWidget):
         self.translations = get_big_stitcher_transforms(
             self.xml_path, x_size, y_size, z_size
         )
-        self.translations = [
+        tile_translations = [
             translation[-2::-2] // DOWNSAMPLE_ARRAY[self.resolution_to_display]
             for translation in self.translations
         ]
 
-        for tile, translation in zip(self.tile_layers, self.translations):
+        for tile, translation in zip(self.tile_layers, tile_translations):
             tile.translate = translation
 
         self.fuse_button.setEnabled(True)
@@ -371,57 +383,48 @@ class StitchingWidget(QWidget):
         return
 
     def _on_adjust_intensity_button_clicked(self):
-        downsampled_stacks = []
-        tile_group = self.h5_file["t00000"]
-        downsampled_size = tile_group["s00/3/cells"].shape
-        z_size, y_size, x_size = downsampled_size
+        # Assumes isotropic downsampling
+        scaled_translations = [
+            translation // DOWNSAMPLE_ARRAY[self.resolution_to_display][0]
+            for translation in self.translations
+        ]
+        overlaps = calculate_overlaps(scaled_translations)
 
-        for idx, tile in enumerate(tile_group):
-            # z stack limit threshold not implemented
-            if self.translations[idx][2] < 40:
-                xs = int(x_size * (1 - self.horizontal_fraction_field.value()))
-                xe = x_size
-            else:
-                xs = 0
-                xe = int(x_size * self.horizontal_fraction_field.value())
+        scale_factors, self.tiles = calculate_scale_factors(
+            overlaps,
+            self.tiles,
+            self.slice_attributes,
+            self.tile_names,
+            scaled_translations,
+            self.percentile_field.value(),
+        )
 
-            if self.translations[idx][1] < 40:
-                ys = int(y_size * (1 - self.vertical_fraction_field.value()))
-                ye = y_size
-            else:
-                ys = 0
-                ye = int(y_size * self.vertical_fraction_field.value())
+        for tile, new_tile in zip(self.tile_layers, self.tiles):
+            tile.data = new_tile
 
-            downsampled_stacks.append(
-                da.from_array(tile_group[f"{tile}/3/cells"][:, ys:ye, xs:xe])
-            )
+        self.intensity_scale_factors = np.prod(scale_factors, axis=0)
 
-        percentile_intensity = []
-        max_percentile_intensity = np.zeros((self.num_channels, 1))
-        for idx, stack in enumerate(downsampled_stacks):
-            percentile = np.percentile(
-                stack.compute(), self.percentile_field.value()
-            )
-            channel_idx = int(
-                self.slice_attributes[self.tile_names[idx]]["channel"]
-            )
+        print(self.intensity_scale_factors)
 
-            if percentile > max_percentile_intensity[channel_idx]:
-                max_percentile_intensity[channel_idx] = percentile
+        return
 
-            percentile_intensity.append(percentile)
+    def _on_test_interpolation_button_clicked(self):
+        scaled_translations = [
+            translation // DOWNSAMPLE_ARRAY[self.resolution_to_display][0]
+            for translation in self.translations
+        ]
+        overlaps = calculate_overlaps(scaled_translations)
 
-        self.intensity_scale_factors = []
-        for idx, tile_layer in enumerate(self.tile_layers):
-            channel_idx = int(
-                self.slice_attributes[self.tile_names[idx]]["channel"]
-            )
-            scale_factor = (
-                max_percentile_intensity[channel_idx]
-                / percentile_intensity[idx]
-            )
-            tile_layer.data = da.multiply(self.tiles[idx], scale_factor)
-            self.intensity_scale_factors.append(scale_factor)
+        interpolate_overlaps(
+            overlaps,
+            self.tiles,
+            self.slice_attributes,
+            self.tile_names,
+            scaled_translations,
+        )
+
+        for tile, new_tile in zip(self.tile_layers, self.tiles):
+            tile.data = new_tile
 
         return
 
