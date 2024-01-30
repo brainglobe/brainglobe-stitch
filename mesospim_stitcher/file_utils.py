@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, List
 
 import h5py
-import numpy as np
+import numpy.typing as npt
 
 HEADERS = [
     "[POSITION]",
@@ -15,8 +15,8 @@ HEADERS = [
 
 def create_pyramid_bdv_h5(
     input_file: Path,
-    resolutions_array: np.array,
-    subdivisions_array: np.array,
+    resolutions_array: npt.NDArray,
+    subdivisions_array: npt.NDArray,
     yield_progress: bool = False,
 ):
     with h5py.File(input_file, "r+") as f:
