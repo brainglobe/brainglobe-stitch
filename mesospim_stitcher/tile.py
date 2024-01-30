@@ -12,8 +12,8 @@ class Tile:
         self.position: Tuple[int, int, int] = (0, 0, 0)
         self.stitched_position: Tuple[int, int, int] = (0, 0, 0)
         self.downsampled_factors: npt.ArrayLike = np.array([4, 4, 4])
-        self.downsampled_data: da.Array | None = None
-        self.data: da.Array | None = None
+        self._downsampled_data: da.Array | None = None
+        self._data: da.Array | None = None
         self.channel_id: int = -1
         self.channel_name: str | None = None
         self.tile_id: int = -1
@@ -25,22 +25,22 @@ class Tile:
 
     @property
     def data(self):
-        if self.data is None:
+        if self._data is None:
             raise ValueError("Tile data not set")
 
-        return self.data
+        return self._data
 
     @data.setter
     def data(self, data: da.Array):
-        self.data = data
+        self._data = data
 
     @property
     def downsampled_data(self):
-        if self.downsampled_data is None:
+        if self._downsampled_data is None:
             raise ValueError("Tile downsampled data not set")
 
-        return self.downsampled_data
+        return self._downsampled_data
 
     @downsampled_data.setter
-    def downsampled_data(self, data: da.Array):
-        self.downsampled_data = data
+    def downsampled_data(self, downsampled_data: da.Array):
+        self._downsampled_data = downsampled_data
