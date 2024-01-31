@@ -118,7 +118,7 @@ def parse_mesospim_metadata(meta_file_name: Path):
     tile_metadata = []
     with open(meta_file_name, "r") as f:
         lines = f.readlines()
-        curr_tile_metadata: dict[str, str | int | float] = {}
+        curr_tile_metadata: Dict[str, str | int | float] = {}
 
         for line in lines[3:]:
             line = line.strip()
