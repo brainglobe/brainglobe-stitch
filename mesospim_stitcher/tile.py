@@ -15,7 +15,8 @@ class Tile:
         self.name: str = tile_name
         self.id: int = tile_id
         self.position: List[int] = [0, 0, 0]
-        self.stitched_position: Tuple[int, int, int] = (0, 0, 0)
+        self.neighbours: List[int] = []
+        self.stitched_position: List[int] = [0, 0, 0]
         self.data_pyramid: List[da.Array] = []
         self.resolution_pyramid: npt.NDArray = np.array([1, 1, 1])
         self.downsampled_factors: npt.ArrayLike = np.array([4, 4, 4])
@@ -51,3 +52,32 @@ class Tile:
     @downsampled_data.setter
     def downsampled_data(self, downsampled_data: da.Array):
         self._downsampled_data = downsampled_data
+
+
+class Overlap:
+    def __init__(
+        self,
+        overlap_coordinates: npt.NDArray,
+        overlap_size: npt.NDArray,
+        tile_i: Tile,
+        tile_j: Tile,
+    ):
+        self.coordinates: npt.NDArray = overlap_coordinates
+        self.size: npt.NDArray = overlap_size
+        self.tiles: Tuple[Tile, Tile] = (tile_i, tile_j)
+        self.local_coordinates: Tuple[npt.NDArray, npt.NDArray] = (
+            np.zeros(self.coordinates.shape),
+            np.zeros(self.coordinates.shape),
+        )
+        self.get_local_overlap_indices(self.tiles)
+
+    def get_local_overlap_indices(self, tiles: Tuple[Tile, Tile]) -> None:
+        tile_shape = self.tiles[0].data_pyramid[0].shape
+
+        for i in range(self.coordinates.shape[0]):
+            if tiles[0].position[i] < tiles[1].position[i]:
+                self.local_coordinates[0][i] = tile_shape[i] - self.size[i]
+                self.local_coordinates[1][i] = 0
+            else:
+                self.local_coordinates[0][i] = 0
+                self.local_coordinates[1][i] = tile_shape[i] - self.size[i]

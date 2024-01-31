@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import List, Tuple
+from time import sleep
+from typing import Dict, List, Tuple
 
 import dask.array as da
 import h5py
@@ -15,7 +16,8 @@ from mesospim_stitcher.file_utils import (
     parse_mesospim_metadata,
     write_big_stitcher_tile_config,
 )
-from mesospim_stitcher.tile import Tile
+from mesospim_stitcher.fuse import get_big_stitcher_transforms
+from mesospim_stitcher.tile import Overlap, Tile
 
 DOWNSAMPLE_ARRAY = np.array(
     [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
@@ -25,7 +27,7 @@ SUBDIVISION_ARRAY = np.array(
 )
 
 
-class ImageGraph:
+class ImageMosaic:
     def __init__(self, directory: Path):
         self.directory: Path = directory
         self.xml_path: Path | None = None
@@ -34,6 +36,7 @@ class ImageGraph:
         self.tile_config_path: Path | None = None
         self.h5_file: h5py.File | None = None
         self.tiles: List[Tile] = []
+        self.overlaps: Dict[Tuple[int, int], Overlap] = {}
 
         self.load_mesospim_directory()
 
@@ -62,8 +65,6 @@ class ImageGraph:
                 task = progress.add_task(
                     "Creating resolution pyramid...", total=100
                 )
-
-                assert self.h5_path is not None
 
                 for update in create_pyramid_bdv_h5(
                     self.h5_path,
@@ -153,7 +154,7 @@ class ImageGraph:
         assert self.xml_path is not None
         assert self.tile_config_path is not None
 
-        run_big_stitcher(
+        result = run_big_stitcher(
             imagej_path,
             self.xml_path,
             self.tile_config_path,
@@ -163,6 +164,36 @@ class ImageGraph:
             downsample_y=downsample_y,
             downsample_z=downsample_z,
         )
+
+        big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
+
+        with open(big_stitcher_output_path, "w") as f:
+            f.write(result.stdout)
+            f.write(result.stderr)
+
+        print(result.stdout)
+
+        # Wait for the BigStitcher to write XML file
+        # Need to find a better way to do this
+        sleep(1)
+
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        stitcher_translations = get_big_stitcher_transforms(
+            self.xml_path, z_size, y_size, x_size
+        )
+
+        for tile in self.tiles:
+            # BigStitcher uses x,y,z order, switch to z,y,x order
+            stitched_position = [
+                stitcher_translations[tile.id][4],
+                stitcher_translations[tile.id][2],
+                stitcher_translations[tile.id][0],
+            ]
+            tile.stitched_position = stitched_position
+            tile.position = stitched_position
+
+        self.calculate_overlaps()
 
     def data_for_napari(
         self, resolution_level: int = 0
@@ -177,3 +208,32 @@ class ImageGraph:
             data.append((scaled_tile, scaled_translation))
 
         return data
+
+    def calculate_overlaps(self):
+        self.overlaps = {}
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        for tile_i in self.tiles[:-1]:
+            position_i = tile_i.position
+            for tile_j in self.tiles[tile_i.id + 1 :]:
+                position_j = tile_j.position
+
+                if (
+                    (position_i[1] + y_size > position_j[1])
+                    and (position_i[2] + x_size > position_j[2])
+                    and (tile_i.tile_id != tile_j.tile_id)
+                ):
+                    starts = np.array(
+                        [max(position_i[i], position_j[i]) for i in range(3)]
+                    )
+                    ends = np.add(
+                        [min(position_i[i], position_j[i]) for i in range(3)],
+                        [z_size, y_size, x_size],
+                    )
+                    size = np.subtract(ends, starts)
+
+                    self.overlaps[(tile_i.id, tile_j.id)] = Overlap(
+                        starts, size, tile_i, tile_j
+                    )
+                    tile_i.neighbours.append(tile_j.id)
+                    tile_j.neighbours.append(tile_i.id)

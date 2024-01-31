@@ -1,14 +1,14 @@
 from pathlib import Path
 
-from mesospim_stitcher.image_graph import ImageGraph
+from mesospim_stitcher.image_mosaic import ImageMosaic
 
 
-def load(directory: Path) -> ImageGraph:
-    return ImageGraph(directory)
+def load(directory: Path) -> ImageMosaic:
+    return ImageMosaic(directory)
 
 
 def stitch(
-    graph: ImageGraph,
+    graph: ImageMosaic,
     imagej_path: Path,
     resolution_level: int = 2,
     selected_channel: str = "",
@@ -18,12 +18,12 @@ def stitch(
 
 if __name__ == "__main__":
     data_directory = Path("C:/Users/Igor/Documents/NIU-dev/stitching/Brain2")
-    graph = load(data_directory)
+    data_graph = load(data_directory)
 
     stitch(
-        graph,
+        data_graph,
         Path("C:/Users/Igor/Documents/Fiji.app/ImageJ-win64.exe"),
         selected_channel="561 nm",
     )
 
-    print(graph.data_for_napari(1))
+    print(data_graph.data_for_napari(1))
