@@ -6,6 +6,10 @@ import dask.array as da
 import h5py
 import numpy as np
 import numpy.typing as npt
+import zarr
+from numcodecs import Blosc, blosc
+from ome_zarr.dask_utils import downscale_nearest
+from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
 
 from mesospim_stitcher.big_stitcher_bridge import run_big_stitcher
@@ -37,8 +41,19 @@ class ImageMosaic:
         self.h5_file: h5py.File | None = None
         self.tiles: List[Tile] = []
         self.overlaps: Dict[Tuple[int, int], Overlap] = {}
+        self.x_y_resolution: float = 4.0  # um per pixel
+        self.z_resolution: float = 5.0  # um per pixel
+        self.num_channels: int = 1
 
         self.load_mesospim_directory()
+
+        self.scale_factors: npt.NDArray | None = None
+        self.intensity_adjusted: List[bool] = [False] * len(
+            self.tiles[0].resolution_pyramid
+        )
+        self.overlaps_interpolated: List[bool] = [False] * len(
+            self.tiles[0].resolution_pyramid
+        )
 
     def load_mesospim_directory(self) -> None:
         try:
@@ -92,6 +107,10 @@ class ImageMosaic:
         while tile_metadata[idx]["Laser"] not in channel_names:
             channel_names.append(tile_metadata[idx]["Laser"])
             idx += 1
+
+        self.x_y_resolution = tile_metadata[0]["Pixelsize in um"]
+        self.z_resolution = tile_metadata[0]["z_stepsize"]
+        self.num_channels = len(channel_names)
 
         tile_group = self.h5_file["t00000"]
         tile_names = list(tile_group.keys())
@@ -239,8 +258,35 @@ class ImageMosaic:
                     tile_i.neighbours.append(tile_j.id)
 
     def normalise_intensity(
-        self, percentile: int = 80, resolution_level: int = 0
+        self, resolution_level: int = 0, percentile: int = 50
+    ) -> None:
+        if self.intensity_adjusted[resolution_level]:
+            print("Intensity already adjusted at this resolution scale.")
+            return
+
+        if self.scale_factors is None:
+            # Calculate scale factors on at least the second resolution level
+            self.calculate_intensity_scale_factors(
+                max(2, resolution_level), percentile
+            )
+
+        assert self.scale_factors is not None
+
+        for tile in self.tiles:
+            if self.scale_factors[tile.id] != 1.0:
+                tile.data_pyramid[resolution_level] = np.multiply(
+                    tile.data_pyramid[resolution_level],
+                    self.scale_factors[tile.id],
+                    dtype=np.float16,
+                ).astype(np.uint16)
+
+    def calculate_intensity_scale_factors(
+        self, resolution_level: int = 2, percentile: int = 50
     ) -> npt.NDArray:
+        if self.intensity_adjusted[resolution_level]:
+            print("Intensity already adjusted at this resolution scale.")
+            return self.scale_factors
+
         num_tiles = len(self.tiles)
         scale_factors = np.ones((num_tiles, num_tiles))
 
@@ -265,12 +311,19 @@ class ImageMosaic:
                     dtype=np.float16,
                 ).astype(np.uint16)
 
-        return scale_factors
+        self.intensity_adjusted[resolution_level] = True
+        self.scale_factors = np.prod(scale_factors, axis=0)
+
+        return self.scale_factors
 
     def interpolate_overlaps(self, resolution_level: int) -> None:
         z_size, y_size, x_size = (
             self.tiles[0].data_pyramid[resolution_level].shape
         )
+
+        if self.overlaps_interpolated[resolution_level]:
+            print("Overlaps already interpolated at this resolution scale.")
+            return
 
         for tile_i in self.tiles[:-1]:
             for neighbour_id in tile_i.neighbours:
@@ -335,3 +388,173 @@ class ImageMosaic:
                 print(
                     f"Done interpolating tile {tile_i.id}" f" and {tile_j.id}"
                 )
+
+        self.overlaps_interpolated[resolution_level] = True
+
+    def fuse(
+        self, output_name: str = "fused.zarr", interpolate: bool = True
+    ) -> None:
+        output_path = self.directory / output_name
+
+        if output_path.suffix == ".zarr":
+            self.fuse_to_zarr(output_path, interpolate)
+
+    def fuse_to_zarr(
+        self, output_path: Path, interpolate: bool = True
+    ) -> None:
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        output_slice_axis = 1
+
+        fused_image_shape: Tuple[int, ...] = (
+            max([tile.position[0] for tile in self.tiles]) + z_size,
+            max([tile.position[1] for tile in self.tiles]) + y_size,
+            max([tile.position[2] for tile in self.tiles]) + x_size,
+        )
+
+        chunk_shape_list = list(fused_image_shape)
+        chunk_shape_list[output_slice_axis] = 1
+        chunk_shape = tuple(chunk_shape_list)
+
+        transformation_metadata, axes_metadata = self.get_metadata_for_zarr()
+
+        if self.num_channels > 1:
+            fused_image_shape = (self.num_channels, *fused_image_shape)
+            chunk_shape = (self.num_channels, *chunk_shape)
+
+        self.normalise_intensity(0, 80)
+
+        if interpolate:
+            self.interpolate_overlaps(0)
+
+        store = zarr.NestedDirectoryStore(str(output_path))
+        root = zarr.group(store=store)
+        compressor = Blosc(cname="zstd", clevel=1, shuffle=Blosc.SHUFFLE)
+
+        fused_image_store = root.create(
+            "0",
+            shape=fused_image_shape,
+            chunks=chunk_shape,
+            dtype="i2",
+            compressor=compressor,
+        )
+
+        blosc.set_nthreads(24)
+
+        for tile in self.tiles[-1::-1]:
+            if self.num_channels > 1:
+                fused_image_store[
+                    tile.channel_id,
+                    tile.position[0] : tile.position[0] + z_size,
+                    tile.position[1] : tile.position[1] + y_size,
+                    tile.position[2] : tile.position[2] + x_size,
+                ] = tile.data_pyramid[0].compute()
+            else:
+                fused_image_store[
+                    tile.position[0] : tile.position[0] + z_size,
+                    tile.position[1] : tile.position[1] + y_size,
+                    tile.position[2] : tile.position[2] + x_size,
+                ] = tile.data_pyramid[0].compute()
+
+            print(f"Done tile {tile.id}")
+
+        for i in range(1, len(transformation_metadata)):
+            prev_resolution = da.from_zarr(root[str(i - 1)])
+
+            if self.num_channels > 1:
+                downsampled_image = downscale_nearest(
+                    prev_resolution, (1, 1, 2, 2)
+                )
+                chunk_shape_list = list(downsampled_image.shape)
+                chunk_shape_list[output_slice_axis + 1] = 2
+            else:
+                downsampled_image = downscale_nearest(
+                    prev_resolution, (1, 2, 2)
+                )
+                chunk_shape_list = list(downsampled_image.shape)
+                chunk_shape_list[output_slice_axis] = 2
+
+            chunk_shape = tuple(chunk_shape_list)
+            downsampled_shape = downsampled_image.shape
+            downsampled_store = root.require_dataset(
+                f"{i}",
+                shape=downsampled_shape,
+                chunks=chunk_shape,
+                dtype="i2",
+                compressor=compressor,
+            )
+            downsampled_image.to_zarr(downsampled_store)
+
+        datasets = []
+
+        for i, transform in enumerate(transformation_metadata):
+            datasets.append(
+                {"path": f"{i}", "coordinateTransformations": transform}
+            )
+
+        write_multiscales_metadata(
+            group=root,
+            datasets=datasets,
+            axes=axes_metadata,
+        )
+
+        possible_channel_colors = [
+            "00FF00",
+            "FF0000",
+            "0000FF",
+            "FFFF00",
+            "00FFFF",
+            "FF00FF",
+        ]
+        channels = []
+        for i in range(self.num_channels):
+            channels.append(
+                {
+                    "active": True,
+                    "color": possible_channel_colors[i],
+                    "name": f"ch{i + 1}",
+                    "window": {
+                        "start": 0,
+                        "end": 4000,
+                        "min": 0,
+                        "max": 65535,
+                    },
+                }
+            )
+
+        root.attrs["omero"] = {"channels": channels}
+
+    def get_metadata_for_zarr(self, pyramid_depth: int = 5):
+        axes = [
+            {"name": "z", "type": "space", "unit": "micrometer"},
+            {"name": "y", "type": "space", "unit": "micrometer"},
+            {"name": "x", "type": "space", "unit": "micrometer"},
+        ]
+
+        coordinate_transformations = []
+        for i in range(pyramid_depth):
+            coordinate_transformations.append(
+                [
+                    {
+                        "type": "scale",
+                        "scale": [
+                            self.z_resolution,
+                            self.x_y_resolution * 2**i,
+                            self.x_y_resolution * 2**i,
+                        ],
+                    }
+                ]
+            )
+
+        if self.num_channels > 1:
+            axes = [
+                {"name": "c", "type": "channel"},
+                {"name": "z", "type": "space", "unit": "micrometer"},
+                {"name": "y", "type": "space", "unit": "micrometer"},
+                {"name": "x", "type": "space", "unit": "micrometer"},
+            ]
+
+            for transform in coordinate_transformations:
+                transform[0]["scale"] = [1.0, *transform[0]["scale"]]
+
+        return coordinate_transformations, axes

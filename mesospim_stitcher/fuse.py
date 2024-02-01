@@ -722,19 +722,6 @@ def interpolate_overlaps(
                 )
 
 
-def calculate_image_stats(image: da) -> Tuple[float, float, float, float]:
-    num_pixels = image.shape[0] * image.shape[1] * image.shape[2]
-    raveled_image = image.ravel()
-    top_min = raveled_image.topk(-int(num_pixels * 0.00001)).compute()
-    top_max = raveled_image.topk(int(num_pixels * 0.00001)).compute()
-    true_min = top_min[0]
-    clean_min = top_min[-1]
-    true_max = top_max[0]
-    clean_max = top_max[-1]
-
-    return clean_min, clean_max, true_min, true_max
-
-
 def extract_overlap_data(
     overlap: Tuple[int, ...],
     tile_i: Tile,

@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import napari
-
 from mesospim_stitcher.image_mosaic import ImageMosaic
 
 
@@ -18,11 +16,23 @@ def stitch(
     graph.stitch(imagej_path, resolution_level, selected_channel)
 
 
+def normalise_intensity(
+    graph: ImageMosaic, resolution_level: int = 2, percentile: int = 50
+) -> None:
+    graph.normalise_intensity(resolution_level, percentile)
+
+
+def interpolate_overlaps(
+    graph: ImageMosaic, resolution_level: int = 2
+) -> None:
+    graph.interpolate_overlaps(resolution_level)
+
+
 if __name__ == "__main__":
     data_directory = Path("C:/Users/Igor/Documents/NIU-dev/stitching/Brain2")
     data_graph = load(data_directory)
 
-    resolution_level = 3
+    resolution_level = 2
 
     stitch(
         data_graph,
@@ -30,15 +40,6 @@ if __name__ == "__main__":
         selected_channel="561 nm",
     )
 
-    data_graph.normalise_intensity(80, resolution_level)
-    data_graph.interpolate_overlaps(resolution_level)
+    normalise_intensity(data_graph, resolution_level, 50)
 
-    tiles = data_graph.data_for_napari(resolution_level)
-
-    viewer = napari.Viewer()
-
-    for tile in tiles:
-        image = viewer.add_image(tile[0], contrast_limits=[0, 3000])
-        image.translate = tile[1]
-
-    napari.run()
+    data_graph.fuse("test.zarr", True)
