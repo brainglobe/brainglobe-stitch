@@ -434,7 +434,7 @@ class ImageMosaic:
         fused_image_store = root.create(
             "0",
             shape=fused_image_shape,
-            chunks=chunk_shape,
+            # chunks=chunk_shape,
             dtype="i2",
             compressor=compressor,
         )
@@ -479,7 +479,7 @@ class ImageMosaic:
             downsampled_store = root.require_dataset(
                 f"{i}",
                 shape=downsampled_shape,
-                chunks=chunk_shape,
+                # chunks=chunk_shape,
                 dtype="i2",
                 compressor=compressor,
             )
