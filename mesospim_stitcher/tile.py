@@ -98,3 +98,51 @@ class Overlap:
                 )
             )
             self.size.append(self.size[0] // resolution_pyramid[j])
+
+    def extract_tile_overlaps(
+        self, resolution_level: int
+    ) -> Tuple[da.Array, da.Array]:
+        scaled_coordinates = self.local_coords[resolution_level]
+        scaled_size = self.size[resolution_level]
+
+        i_overlap = self.tiles[0].data_pyramid[resolution_level][
+            scaled_coordinates[0][0] : scaled_coordinates[0][0]
+            + scaled_size[0],
+            scaled_coordinates[0][1] : scaled_coordinates[0][1]
+            + scaled_size[1],
+            scaled_coordinates[0][2] : scaled_coordinates[0][2]
+            + scaled_size[2],
+        ]
+
+        j_overlap = self.tiles[1].data_pyramid[resolution_level][
+            scaled_coordinates[1][0] : scaled_coordinates[1][0]
+            + scaled_size[0],
+            scaled_coordinates[1][1] : scaled_coordinates[1][1]
+            + scaled_size[1],
+            scaled_coordinates[1][2] : scaled_coordinates[1][2]
+            + scaled_size[2],
+        ]
+
+        return i_overlap, j_overlap
+
+    def replace_overlap_data(self, resolution_level: int, new_data: da.Array):
+        scaled_coordinates = self.local_coords[resolution_level]
+        scaled_size = self.size[resolution_level]
+
+        self.tiles[0].data_pyramid[resolution_level][
+            scaled_coordinates[0][0] : scaled_coordinates[0][0]
+            + scaled_size[0],
+            scaled_coordinates[0][1] : scaled_coordinates[0][1]
+            + scaled_size[1],
+            scaled_coordinates[0][2] : scaled_coordinates[0][2]
+            + scaled_size[2],
+        ] = new_data
+
+        self.tiles[1].data_pyramid[resolution_level][
+            scaled_coordinates[1][0] : scaled_coordinates[1][0]
+            + scaled_size[0],
+            scaled_coordinates[1][1] : scaled_coordinates[1][1]
+            + scaled_size[1],
+            scaled_coordinates[1][2] : scaled_coordinates[1][2]
+            + scaled_size[2],
+        ] = new_data
