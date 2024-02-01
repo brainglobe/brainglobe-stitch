@@ -222,6 +222,7 @@ class ImageMosaic:
                     (position_i[1] + y_size > position_j[1])
                     and (position_i[2] + x_size > position_j[2])
                     and (tile_i.tile_id != tile_j.tile_id)
+                    and (tile_i.channel_id == tile_j.channel_id)
                 ):
                     starts = np.array(
                         [max(position_i[i], position_j[i]) for i in range(3)]
@@ -236,4 +237,54 @@ class ImageMosaic:
                         starts, size, tile_i, tile_j
                     )
                     tile_i.neighbours.append(tile_j.id)
-                    tile_j.neighbours.append(tile_i.id)
+
+    def normalise_intensity(
+        self, percentile: int = 80, resolution_level: int = 0
+    ) -> npt.NDArray:
+        num_tiles = len(self.tiles)
+        scale_factors = np.ones((num_tiles, num_tiles))
+
+        for tile_i in self.tiles:
+            for neighbour_id in tile_i.neighbours:
+                tile_j = self.tiles[neighbour_id]
+                overlap = self.overlaps[(tile_i.id, tile_j.id)]
+
+                scaled_coordinates = overlap.local_coords[resolution_level]
+                scaled_size = overlap.size[resolution_level]
+
+                i_overlap = tile_i.data_pyramid[resolution_level][
+                    scaled_coordinates[0][0] : scaled_coordinates[0][0]
+                    + scaled_size[0],
+                    scaled_coordinates[0][1] : scaled_coordinates[0][1]
+                    + scaled_size[1],
+                    scaled_coordinates[0][2] : scaled_coordinates[0][2]
+                    + scaled_size[2],
+                ]
+
+                j_overlap = tile_j.data_pyramid[resolution_level][
+                    scaled_coordinates[1][0] : scaled_coordinates[1][0]
+                    + scaled_size[0],
+                    scaled_coordinates[1][1] : scaled_coordinates[1][1]
+                    + scaled_size[1],
+                    scaled_coordinates[1][2] : scaled_coordinates[1][2]
+                    + scaled_size[2],
+                ]
+
+                median_i = np.percentile(i_overlap.ravel(), percentile)
+                median_j = np.percentile(j_overlap.ravel(), percentile)
+
+                curr_scale_factor = (median_i / median_j).compute()
+                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor[0]
+
+                del i_overlap
+                del j_overlap
+                del median_i
+                del median_j
+
+                tile_j.data_pyramid[resolution_level] = np.multiply(
+                    tile_j.data_pyramid[resolution_level],
+                    curr_scale_factor,
+                    dtype=np.float16,
+                ).astype(np.uint16)
+
+        return scale_factors

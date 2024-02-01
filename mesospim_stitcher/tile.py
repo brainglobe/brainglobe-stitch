@@ -63,21 +63,38 @@ class Overlap:
         tile_j: Tile,
     ):
         self.coordinates: npt.NDArray = overlap_coordinates
-        self.size: npt.NDArray = overlap_size
+        self.size: List[npt.NDArray] = [overlap_size]
         self.tiles: Tuple[Tile, Tile] = (tile_i, tile_j)
         self.local_coordinates: Tuple[npt.NDArray, npt.NDArray] = (
-            np.zeros(self.coordinates.shape),
-            np.zeros(self.coordinates.shape),
+            np.zeros((self.coordinates.shape[0], 2)),
+            np.zeros((self.coordinates.shape[0], 2)),
         )
+
+        self.local_coords: List[Tuple[npt.NDArray, npt.NDArray]] = [
+            (
+                np.zeros(self.coordinates.shape),
+                np.zeros(self.coordinates.shape),
+            ),
+        ]
         self.get_local_overlap_indices(self.tiles)
 
     def get_local_overlap_indices(self, tiles: Tuple[Tile, Tile]) -> None:
         tile_shape = self.tiles[0].data_pyramid[0].shape
+        resolution_pyramid = tiles[0].resolution_pyramid
 
         for i in range(self.coordinates.shape[0]):
             if tiles[0].position[i] < tiles[1].position[i]:
-                self.local_coordinates[0][i] = tile_shape[i] - self.size[i]
-                self.local_coordinates[1][i] = 0
+                self.local_coords[0][0][i] = tile_shape[i] - self.size[0][i]
+                self.local_coords[0][1][i] = 0
             else:
-                self.local_coordinates[0][i] = 0
-                self.local_coordinates[1][i] = tile_shape[i] - self.size[i]
+                self.local_coords[0][0][i] = 0
+                self.local_coords[0][1][i] = tile_shape[i] - self.size[0][i]
+
+        for j in range(1, len(resolution_pyramid)):
+            self.local_coords.append(
+                (
+                    self.local_coords[0][0] // resolution_pyramid[j],
+                    self.local_coords[0][1] // resolution_pyramid[j],
+                )
+            )
+            self.size.append(self.size[0] // resolution_pyramid[j])

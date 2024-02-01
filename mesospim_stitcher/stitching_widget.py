@@ -465,7 +465,6 @@ class StitchingWidget(QWidget):
         else:
             show_warning("ImageJ path not valid")
 
-    #
     # def hideEvent(self, a0, QHideEvent=None):
     #     super().hideEvent(a0)
     #     if self.h5_file:

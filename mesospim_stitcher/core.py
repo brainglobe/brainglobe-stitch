@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import napari
+
 from mesospim_stitcher.image_mosaic import ImageMosaic
 
 
@@ -26,4 +28,14 @@ if __name__ == "__main__":
         selected_channel="561 nm",
     )
 
-    print(data_graph.data_for_napari(1))
+    data_graph.normalise_intensity(80, 2)
+
+    tiles = data_graph.data_for_napari(2)
+
+    viewer = napari.Viewer()
+
+    for tile in tiles:
+        image = viewer.add_image(tile[0])
+        image.translate = tile[1]
+
+    napari.run()
