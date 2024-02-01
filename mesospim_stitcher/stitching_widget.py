@@ -26,12 +26,10 @@ from qtpy.QtWidgets import (
 from superqt import QCollapsible
 
 from mesospim_stitcher.big_stitcher_bridge import run_big_stitcher
+from mesospim_stitcher.core import load
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
-    get_slice_attributes,
-    parse_mesospim_metadata,
-    write_big_stitcher_tile_config,
 )
 from mesospim_stitcher.fuse import (
     calculate_overlaps,
@@ -40,6 +38,7 @@ from mesospim_stitcher.fuse import (
     get_big_stitcher_transforms,
     interpolate_overlaps,
 )
+from mesospim_stitcher.image_mosaic import ImageMosaic
 from mesospim_stitcher.tile import Tile
 
 DOWNSAMPLE_ARRAY = np.array(
@@ -56,6 +55,7 @@ class StitchingWidget(QWidget):
         super().__init__()
         self.progress_bar = QProgressBar(self)
         self._viewer = napari_viewer
+        self.image_graph: ImageMosaic | None = None
         self.xml_path: Path | None = None
         self.meta_path: Path | None = None
         self.h5_path: Path | None = None
@@ -236,102 +236,26 @@ class StitchingWidget(QWidget):
         worker.start()
 
     def _on_add_tiles_button_clicked(self):
-        self.tile_config_path = Path(
-            str(self.xml_path)[:-4] + "_tile_config.txt"
-        )
-
-        if not self.tile_config_path.exists():
-            self.tile_metadata = write_big_stitcher_tile_config(
-                self.meta_path, self.h5_path
-            )
-        else:
-            self.tile_metadata = parse_mesospim_metadata(self.meta_path)
-
-        self.h5_file = h5py.File(self.h5_path, "r")
-        self.original_image_shape = self.h5_file["t00000/s00/0/cells"].shape
-        self.tiles = []
-        tile_group = self.h5_file["t00000"]
-
-        self.tile_names = list(tile_group.keys())
-
-        for idx, name in enumerate(self.tile_names):
-            self.tile_objects.append(Tile(name, idx))
-
-        with open(self.tile_config_path, "r") as f:
-            # Skip header
-            f.readline()
-            for line, tile in zip(f.readlines(), self.tile_objects):
-                split_line = line.split(";")[-1].strip("()\n").split(",")
-                # BigStitcher uses x,y,z order
-                # Switch to z,y,x order
-                translation = (
-                    int(split_line[2]),
-                    int(split_line[1]),
-                    int(split_line[0]),
-                )
-                tile.set_position(translation)
-
-        channel_names = []
-        idx = 0
-        while self.tile_metadata[idx]["Laser"] not in channel_names:
-            channel_names.append(self.tile_metadata[idx]["Laser"])
-            idx += 1
+        self.image_graph = load(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
-        self.fuse_channel_dropdown.addItems(channel_names)
-        self.num_channels = len(channel_names)
+        self.fuse_channel_dropdown.addItems(self.image_graph.channel_names)
 
-        self.slice_attributes = get_slice_attributes(
-            self.xml_path, self.tile_names
-        )
+        tiles = self.image_graph.data_for_napari(self.resolution_to_display)
 
-        for idx, tile_object in enumerate(self.tile_objects):
-            tile_object.channel_id = int(
-                self.slice_attributes[tile_object.name]["channel"]
-            )
-            tile_object.tile_id = int(
-                self.slice_attributes[tile_object.name]["tile"]
-            )
-            tile_object.illumination_id = int(
-                self.slice_attributes[tile_object.name]["illumination"]
-            )
-            tile_object.angle = float(
-                self.slice_attributes[tile_object.name]["angle"]
-            )
-            try:
-                downsampled_tile = da.from_array(
-                    tile_group[
-                        f"{tile_object.name}/{self.resolution_to_display}/cells"
-                    ]
-                )
-                full_resolution_tile = da.from_array(
-                    tile_group[f"{tile_object.name}/0/cells"]
-                )
-                tile_object.downsampled_data = downsampled_tile
-                tile_object.data = full_resolution_tile
-                resolution_pyramid = np.array(
-                    self.h5_file[tile_object.name]["resolutions"]
-                )
-                tile_object.downsampled_factors = resolution_pyramid[
-                    self.resolution_to_display
-                ]
-            except KeyError:
-                show_warning("Resolution pyramid not found")
-                return
-
-            self.tiles.append(downsampled_tile)
-            tile = self._viewer.add_image(
-                downsampled_tile,
+        for tile, tile_name in zip(tiles, self.image_graph.tile_names):
+            data = tile[0]
+            coordinates = tile[1]
+            tile_layer = self._viewer.add_image(
+                data,
                 blending="translucent",
                 contrast_limits=[0, 4000],
                 multiscale=False,
-                name=tile_object.name,
+                name=tile_name,
             )
 
-            self.tile_layers.append(tile)
-            tile.translate = (
-                tile_object.position // tile_object.downsampled_factors
-            )
+            self.tile_layers.append(tile_layer)
+            tile_layer.translate = coordinates
 
     def _on_stitch_button_clicked(self):
         try:

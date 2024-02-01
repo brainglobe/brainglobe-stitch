@@ -39,7 +39,9 @@ class ImageMosaic:
         self.h5_path: Path | None = None
         self.tile_config_path: Path | None = None
         self.h5_file: h5py.File | None = None
+        self.channel_names: List[str] = []
         self.tiles: List[Tile] = []
+        self.tile_names: List[str] = []
         self.overlaps: Dict[Tuple[int, int], Overlap] = {}
         self.x_y_resolution: float = 4.0  # um per pixel
         self.z_resolution: float = 5.0  # um per pixel
@@ -102,24 +104,24 @@ class ImageMosaic:
         else:
             tile_metadata = parse_mesospim_metadata(self.meta_path)
 
-        channel_names = []
+        self.channel_names = []
         idx = 0
-        while tile_metadata[idx]["Laser"] not in channel_names:
-            channel_names.append(tile_metadata[idx]["Laser"])
+        while tile_metadata[idx]["Laser"] not in self.channel_names:
+            self.channel_names.append(tile_metadata[idx]["Laser"])
             idx += 1
 
         self.x_y_resolution = tile_metadata[0]["Pixelsize in um"]
         self.z_resolution = tile_metadata[0]["z_stepsize"]
-        self.num_channels = len(channel_names)
+        self.num_channels = len(self.channel_names)
 
         tile_group = self.h5_file["t00000"]
-        tile_names = list(tile_group.keys())
-        slice_attributes = get_slice_attributes(self.xml_path, tile_names)
+        self.tile_names = list(tile_group.keys())
+        slice_attributes = get_slice_attributes(self.xml_path, self.tile_names)
 
         self.tiles = []
-        for idx, tile_name in enumerate(tile_names):
+        for idx, tile_name in enumerate(self.tile_names):
             tile = Tile(tile_name, idx, slice_attributes[tile_name])
-            tile.channel_name = channel_names[tile.channel_id]
+            tile.channel_name = self.channel_names[tile.channel_id]
             self.tiles.append(tile)
             tile_data = []
 
