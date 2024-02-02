@@ -164,8 +164,8 @@ class ImageMosaic:
         if not all_channels:
             try:
                 channel_int = int(selected_channel.split()[0])
-            except ValueError as e:
-                e.add_note("Invalid channel name.")
+            except ValueError:
+                print("Invalid channel name.")
                 raise
 
         downsample_x, downsample_y, downsample_z = self.tiles[
