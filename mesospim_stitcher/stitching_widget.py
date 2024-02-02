@@ -245,7 +245,7 @@ class StitchingWidget(QWidget):
             self.resolution_to_display
         )
 
-        self.update_tiles_from_mosaic(napari_data)
+        self.add_tiles_from_mosaic(napari_data)
 
     def _on_stitch_button_clicked(self):
         stitch(
@@ -346,7 +346,7 @@ class StitchingWidget(QWidget):
         else:
             show_warning("ImageJ path not valid")
 
-    def update_tiles_from_mosaic(self, napari_data):
+    def add_tiles_from_mosaic(self, napari_data):
         for data, tile_name in zip(napari_data, self.image_mosaic.tile_names):
             tile_data, tile_position = data
             tile_layer = self._viewer.add_image(
@@ -358,6 +358,12 @@ class StitchingWidget(QWidget):
             )
 
             self.tile_layers.append(tile_layer)
+            tile_layer.translate = tile_position
+
+    def update_tiles_from_mosaic(self, napari_data):
+        for data, tile_layer in zip(napari_data, self.tile_layers):
+            tile_data, tile_position = data
+            tile_layer.data = tile_data
             tile_layer.translate = tile_position
 
     # def hideEvent(self, a0, QHideEvent=None):
