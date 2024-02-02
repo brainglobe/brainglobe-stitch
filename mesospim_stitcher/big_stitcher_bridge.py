@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from sys import platform
 
 
 def run_big_stitcher(
@@ -13,6 +14,10 @@ def run_big_stitcher(
     downsample_z: int = 4,
 ):
     stitch_macro_path = Path(__file__).resolve().parent / "stitch_macro.ijm"
+
+    if platform.startswith("darwin"):
+        imagej_path = imagej_path / "Contents/MacOS/ImageJ-macosx"
+
     command = (
         f"{imagej_path} --ij2"
         f" --headless -macro {stitch_macro_path} "
@@ -21,7 +26,7 @@ def run_big_stitcher(
     )
 
     result = subprocess.run(
-        command, capture_output=True, text=True, check=True
+        command, capture_output=True, text=True, check=True, shell=True
     )
 
     return result
