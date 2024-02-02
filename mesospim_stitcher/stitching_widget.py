@@ -234,6 +234,7 @@ class StitchingWidget(QWidget):
         worker.start()
 
     def _on_add_tiles_button_clicked(self):
+        # Need to run in a separate worker thread
         self.image_mosaic = load(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
