@@ -30,9 +30,6 @@ from mesospim_stitcher.core import load
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
-    get_slice_attributes,
-    parse_mesospim_metadata,
-    write_big_stitcher_tile_config,
 )
 from mesospim_stitcher.fuse import (
     calculate_overlaps,
@@ -245,7 +242,9 @@ class StitchingWidget(QWidget):
         self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
         self.num_channels = len(self.image_mosaic.channel_names)
 
-        napari_data = self.image_mosaic.data_for_napari(self.resolution_to_display)
+        napari_data = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
 
         for data, tile_name in zip(napari_data, self.image_mosaic.tile_names):
             tile_data, tile_position = data
