@@ -1,5 +1,4 @@
 from pathlib import Path
-from time import sleep
 from typing import Dict, List, Tuple
 
 import dask.array as da
@@ -25,8 +24,7 @@ from qtpy.QtWidgets import (
 )
 from superqt import QCollapsible
 
-from mesospim_stitcher.big_stitcher_bridge import run_big_stitcher
-from mesospim_stitcher.core import load
+from mesospim_stitcher.core import load, stitch
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
@@ -35,7 +33,6 @@ from mesospim_stitcher.fuse import (
     calculate_overlaps,
     calculate_scale_factors,
     fuse_image,
-    get_big_stitcher_transforms,
     interpolate_overlaps,
 )
 from mesospim_stitcher.image_mosaic import ImageMosaic
@@ -55,7 +52,7 @@ class StitchingWidget(QWidget):
         super().__init__()
         self.progress_bar = QProgressBar(self)
         self._viewer = napari_viewer
-        self.image_graph: ImageMosaic | None = None
+        self.image_mosaic: ImageMosaic | None = None
         self.xml_path: Path | None = None
         self.meta_path: Path | None = None
         self.h5_path: Path | None = None
@@ -157,11 +154,12 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.layout().addWidget(self.adjust_intensity_button)
 
-        self.test_interpolation_button = QPushButton("Test Interpolation")
-        self.test_interpolation_button.clicked.connect(
+        self.interpolate_button = QPushButton("Interpolation")
+        self.interpolate_button.clicked.connect(
             self._on_test_interpolation_button_clicked
         )
-        self.layout().addWidget(self.test_interpolation_button)
+        self.interpolate_button.setEnabled(False)
+        self.layout().addWidget(self.interpolate_button)
 
         self.adjust_intensity_collapsible = QCollapsible(
             "Intensity Adjustment Options"
@@ -236,77 +234,34 @@ class StitchingWidget(QWidget):
         worker.start()
 
     def _on_add_tiles_button_clicked(self):
-        self.image_graph = load(self.working_directory)
+        self.image_mosaic = load(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
         self.fuse_channel_dropdown.addItems(self.image_graph.channel_names)
 
-        tiles = self.image_graph.data_for_napari(self.resolution_to_display)
+        napari_data = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
 
-        for tile, tile_name in zip(tiles, self.image_graph.tile_names):
-            data = tile[0]
-            coordinates = tile[1]
-            tile_layer = self._viewer.add_image(
-                data,
-                blending="translucent",
-                contrast_limits=[0, 4000],
-                multiscale=False,
-                name=tile_name,
-            )
-
-            self.tile_layers.append(tile_layer)
-            tile_layer.translate = coordinates
+        self.add_tiles_from_mosaic(napari_data)
 
     def _on_stitch_button_clicked(self):
-        try:
-            channel_int = int(
-                self.fuse_channel_dropdown.currentText().split()[0]
-            )
-        except ValueError:
-            show_warning("Invalid channel name")
-
-            return
-
-        # Need to use a worker to run the stitching in a separate thread
-        results = run_big_stitcher(
+        stitch(
+            self.image_mosaic,
             self.imagej_path,
-            self.xml_path,
-            self.tile_config_path,
-            all_channels=False,
-            selected_channel=channel_int,
-            downsample_x=4,
-            downsample_y=4,
-            downsample_z=4,
+            resolution_level=2,
+            selected_channel=self.fuse_channel_dropdown.currentText(),
         )
 
-        with open("big_stitcher_output.txt", "w") as f:
-            f.write(results.stdout)
-            f.write(results.stderr)
-
-        # Wait for the BigStitcher to write XML file
-        # Need to find a better way to do this
-        sleep(1)
-
-        z_size, y_size, x_size = self.original_image_shape
-        self.translations = get_big_stitcher_transforms(
-            self.xml_path, x_size, y_size, z_size
+        napari_data = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
         )
 
-        for tile_object, translation, tile_layer in zip(
-            self.tile_objects, self.translations, self.tile_layers
-        ):
-            tile_object.stitched_position = (
-                translation[4],
-                translation[2],
-                translation[0],
-            )
-            tile_layer.translate = (
-                tile_object.stitched_position
-                // tile_object.downsampled_factors
-            )
+        self.update_tiles_from_mosaic(napari_data)
 
         self.fuse_button.setEnabled(True)
         self.adjust_intensity_button.setEnabled(True)
+        self.interpolate_button.setEnabled(True)
 
         return
 
@@ -388,6 +343,26 @@ class StitchingWidget(QWidget):
             self.stitch_button.setEnabled(True)
         else:
             show_warning("ImageJ path not valid")
+
+    def add_tiles_from_mosaic(self, napari_data):
+        for data, tile_name in zip(napari_data, self.image_mosaic.tile_names):
+            tile_data, tile_position = data
+            tile_layer = self._viewer.add_image(
+                tile_data,
+                blending="translucent",
+                contrast_limits=[0, 4000],
+                multiscale=False,
+                name=tile_name,
+            )
+
+            self.tile_layers.append(tile_layer)
+            tile_layer.translate = tile_position
+
+    def update_tiles_from_mosaic(self, napari_data):
+        for data, tile_layer in zip(napari_data, self.tile_layers):
+            tile_data, tile_position = data
+            tile_layer.data = tile_data
+            tile_layer.translate = tile_position
 
     # def hideEvent(self, a0, QHideEvent=None):
     #     super().hideEvent(a0)

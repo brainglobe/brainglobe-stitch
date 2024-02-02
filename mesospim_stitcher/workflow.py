@@ -1,8 +1,4 @@
-from pathlib import Path
-
 import numpy as np
-
-from mesospim_stitcher.fuse import fuse_image
 
 XML_PATH = (
     "C:/Users/Igor/Documents/NIU-dev/stitching/One_Channel/"
@@ -48,8 +44,8 @@ SUBDIVISION_ARRAY = np.array(
 #     f.write(result_big_stitcher.stdout)
 #     f.write(result_big_stitcher.stderr)
 
-fuse_image(
-    Path(XML_PATH),
-    Path(H5_PATH),
-    Path(OUT_PATH),
-)
+# fuse_image(
+#     Path(XML_PATH),
+#     Path(H5_PATH),
+#     Path(OUT_PATH),
+# )
