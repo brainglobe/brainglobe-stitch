@@ -269,8 +269,10 @@ class ImageMosaic:
         if self.scale_factors is None:
             # Calculate scale factors on at least the second resolution level
             self.calculate_intensity_scale_factors(
-                max(2, resolution_level), percentile
+                resolution_level, percentile
             )
+
+            return
 
         assert self.scale_factors is not None
 
@@ -281,6 +283,8 @@ class ImageMosaic:
                     self.scale_factors[tile.id],
                     dtype=np.float16,
                 ).astype(np.uint16)
+
+        self.intensity_adjusted[resolution_level] = True
 
     def calculate_intensity_scale_factors(
         self, resolution_level: int = 2, percentile: int = 50

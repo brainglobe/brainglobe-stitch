@@ -24,14 +24,13 @@ from qtpy.QtWidgets import (
 )
 from superqt import QCollapsible
 
-from mesospim_stitcher.core import load, stitch
+from mesospim_stitcher.core import load, normalise_intensity, stitch
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
 )
 from mesospim_stitcher.fuse import (
     calculate_overlaps,
-    calculate_scale_factors,
     fuse_image,
     interpolate_overlaps,
 )
@@ -238,7 +237,7 @@ class StitchingWidget(QWidget):
         self.image_mosaic = load(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
-        self.fuse_channel_dropdown.addItems(self.image_graph.channel_names)
+        self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
 
         napari_data = self.image_mosaic.data_for_napari(
             self.resolution_to_display
@@ -267,27 +266,17 @@ class StitchingWidget(QWidget):
         return
 
     def _on_adjust_intensity_button_clicked(self):
-        # Assumes isotropic downsampling
-        scaled_translations = [
-            translation // DOWNSAMPLE_ARRAY[self.resolution_to_display][0]
-            for translation in self.translations
-        ]
-        overlaps = calculate_overlaps(scaled_translations)
-
-        scale_factors, self.tiles = calculate_scale_factors(
-            overlaps,
-            self.tile_objects,
-            self.percentile_field.value(),
+        normalise_intensity(
+            self.image_mosaic,
+            resolution_level=self.resolution_to_display,
+            percentile=self.percentile_field.value(),
         )
 
-        for tile_layer, tile_object in zip(
-            self.tile_layers, self.tile_objects
-        ):
-            tile_layer.data = tile_object.downsampled_data
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
 
-        self.intensity_scale_factors = np.prod(scale_factors, axis=0)
-
-        print(self.intensity_scale_factors)
+        self.update_tiles_from_mosaic(data_for_napari)
 
         return
 
