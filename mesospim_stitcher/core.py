@@ -8,24 +8,24 @@ def load(directory: Path) -> ImageMosaic:
 
 
 def stitch(
-    graph: ImageMosaic,
+    image_mosaic: ImageMosaic,
     imagej_path: Path,
     resolution_level: int = 2,
     selected_channel: str = "",
 ) -> None:
-    graph.stitch(imagej_path, resolution_level, selected_channel)
+    image_mosaic.stitch(imagej_path, resolution_level, selected_channel)
 
 
 def normalise_intensity(
-    graph: ImageMosaic, resolution_level: int = 2, percentile: int = 50
+    image_mosaic: ImageMosaic, resolution_level: int = 2, percentile: int = 50
 ) -> None:
-    graph.normalise_intensity(resolution_level, percentile)
+    image_mosaic.normalise_intensity(resolution_level, percentile)
 
 
 def interpolate_overlaps(
-    graph: ImageMosaic, resolution_level: int = 2
+    image_mosaic: ImageMosaic, resolution_level: int = 2
 ) -> None:
-    graph.interpolate_overlaps(resolution_level)
+    image_mosaic.interpolate_overlaps(resolution_level)
 
 
 if __name__ == "__main__":

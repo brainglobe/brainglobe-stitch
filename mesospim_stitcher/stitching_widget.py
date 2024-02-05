@@ -24,15 +24,18 @@ from qtpy.QtWidgets import (
 )
 from superqt import QCollapsible
 
-from mesospim_stitcher.core import load, normalise_intensity, stitch
+from mesospim_stitcher.core import (
+    interpolate_overlaps,
+    load,
+    normalise_intensity,
+    stitch,
+)
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
 )
 from mesospim_stitcher.fuse import (
-    calculate_overlaps,
     fuse_image,
-    interpolate_overlaps,
 )
 from mesospim_stitcher.image_mosaic import ImageMosaic
 from mesospim_stitcher.tile import Tile
@@ -153,9 +156,9 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.layout().addWidget(self.adjust_intensity_button)
 
-        self.interpolate_button = QPushButton("Interpolation")
+        self.interpolate_button = QPushButton("Interpolate")
         self.interpolate_button.clicked.connect(
-            self._on_test_interpolation_button_clicked
+            self._on_interpolation_button_clicked
         )
         self.interpolate_button.setEnabled(False)
         self.layout().addWidget(self.interpolate_button)
@@ -280,23 +283,14 @@ class StitchingWidget(QWidget):
 
         return
 
-    def _on_test_interpolation_button_clicked(self):
-        scaled_translations = [
-            translation // DOWNSAMPLE_ARRAY[self.resolution_to_display][0]
-            for translation in self.translations
-        ]
-        overlaps = calculate_overlaps(scaled_translations)
+    def _on_interpolation_button_clicked(self):
+        interpolate_overlaps(self.image_mosaic, self.resolution_to_display)
 
-        interpolate_overlaps(
-            overlaps,
-            self.tile_objects,
-            full_res=False,
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
         )
 
-        for tile_layer, tile_object in zip(
-            self.tile_layers, self.tile_objects
-        ):
-            tile_layer.data = tile_object.downsampled_data
+        self.update_tiles_from_mosaic(data_for_napari)
 
         return
 
