@@ -10,6 +10,7 @@ from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
 from napari.viewer import Viewer
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -25,6 +26,7 @@ from qtpy.QtWidgets import (
 from superqt import QCollapsible
 
 from mesospim_stitcher.core import (
+    fuse,
     interpolate_overlaps,
     load,
     normalise_intensity,
@@ -33,9 +35,6 @@ from mesospim_stitcher.core import (
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
-)
-from mesospim_stitcher.fuse import (
-    fuse_image,
 )
 from mesospim_stitcher.image_mosaic import ImageMosaic
 from mesospim_stitcher.tile import Tile
@@ -185,6 +184,20 @@ class StitchingWidget(QWidget):
         self.layout().addWidget(self.adjust_intensity_collapsible)
         self.adjust_intensity_collapsible.collapse(animate=False)
 
+        self.fuse_option_widget = QWidget()
+        self.fuse_option_widget.setLayout(QFormLayout())
+        self.normalise_intensity_toggle = QCheckBox()
+        self.interpolate_toggle = QCheckBox()
+
+        self.fuse_option_widget.layout().addRow(
+            "Normalise intensity:", self.normalise_intensity_toggle
+        )
+        self.fuse_option_widget.layout().addRow(
+            "Interpolate overlaps:", self.interpolate_toggle
+        )
+
+        self.layout().addWidget(self.fuse_option_widget)
+
         self.fuse_button = QPushButton("Fuse")
         self.fuse_button.clicked.connect(self._on_fuse_button_clicked)
         self.fuse_button.setEnabled(False)
@@ -295,15 +308,13 @@ class StitchingWidget(QWidget):
         return
 
     def _on_fuse_button_clicked(self):
-        fuse_image(
-            self.xml_path,
-            self.h5_path,
-            self.h5_path.with_suffix(".zarr"),
-            self.tile_metadata,
-            self.intensity_scale_factors,
-            self.num_channels,
-            yield_progress=False,
+        fuse(
+            self.image_mosaic,
+            "fused.zarr",
+            self.normalise_intensity_toggle.isChecked(),
+            self.interpolate_toggle.isChecked(),
         )
+
         return
 
     def check_and_load_mesospim_directory(self):

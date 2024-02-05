@@ -398,15 +398,21 @@ class ImageMosaic:
         self.overlaps_interpolated[resolution_level] = True
 
     def fuse(
-        self, output_name: str = "fused.zarr", interpolate: bool = True
+        self,
+        output_file_name: str = "fused.zarr",
+        normalise_intensity: bool = False,
+        interpolate: bool = False,
     ) -> None:
-        output_path = self.directory / output_name
+        output_path = self.directory / output_file_name
 
         if output_path.suffix == ".zarr":
-            self.fuse_to_zarr(output_path, interpolate)
+            self.fuse_to_zarr(output_path, normalise_intensity, interpolate)
 
     def fuse_to_zarr(
-        self, output_path: Path, interpolate: bool = True
+        self,
+        output_path: Path,
+        normalise_intensity: bool = False,
+        interpolate: bool = False,
     ) -> None:
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
 
@@ -422,13 +428,16 @@ class ImageMosaic:
         chunk_shape_list[output_slice_axis] = 1
         chunk_shape = tuple(chunk_shape_list)
 
-        transformation_metadata, axes_metadata = self.get_metadata_for_zarr()
+        transformation_metadata, axes_metadata = self.get_metadata_for_zarr(
+            pyramid_depth=6
+        )
 
         if self.num_channels > 1:
             fused_image_shape = (self.num_channels, *fused_image_shape)
             chunk_shape = (self.num_channels, *chunk_shape)
 
-        self.normalise_intensity(0, 80)
+        if normalise_intensity:
+            self.normalise_intensity(0, 80)
 
         if interpolate:
             self.interpolate_overlaps(0)

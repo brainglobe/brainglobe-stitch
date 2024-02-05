@@ -28,6 +28,15 @@ def interpolate_overlaps(
     image_mosaic.interpolate_overlaps(resolution_level)
 
 
+def fuse(
+    image_mosaic: ImageMosaic,
+    output_file_name: str,
+    normalise_intensity: bool = False,
+    interpolate: bool = False,
+) -> None:
+    image_mosaic.fuse(output_file_name, normalise_intensity, interpolate)
+
+
 if __name__ == "__main__":
     data_directory = Path("C:/Users/Igor/Documents/NIU-dev/stitching/Brain2")
     data_graph = load(data_directory)
