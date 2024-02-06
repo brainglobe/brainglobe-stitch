@@ -18,6 +18,7 @@ from mesospim_stitcher.file_utils import (
     create_pyramid_bdv_h5,
     get_slice_attributes,
     parse_mesospim_metadata,
+    write_bdv_xml,
 )
 from mesospim_stitcher.fuse import get_big_stitcher_transforms
 from mesospim_stitcher.tile import Overlap, Tile
@@ -452,24 +453,30 @@ class ImageMosaic:
     ) -> None:
         output_path = self.directory / output_file_name
 
-        if output_path.suffix == ".zarr":
-            self.fuse_to_zarr(output_path, normalise_intensity, interpolate)
-
-    def fuse_to_zarr(
-        self,
-        output_path: Path,
-        normalise_intensity: bool = False,
-        interpolate: bool = False,
-    ) -> None:
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
-
-        output_slice_axis = 1
-
         fused_image_shape: Tuple[int, ...] = (
             max([tile.position[0] for tile in self.tiles]) + z_size,
             max([tile.position[1] for tile in self.tiles]) + y_size,
             max([tile.position[2] for tile in self.tiles]) + x_size,
         )
+
+        if normalise_intensity:
+            self.normalise_intensity(0, 80)
+
+        if interpolate:
+            self.interpolate_overlaps(0)
+
+        if output_path.suffix == ".zarr":
+            self.fuse_to_zarr(output_path, fused_image_shape)
+        elif output_path.suffix == ".h5":
+            self.fuse_to_bdv_h5(output_path, fused_image_shape)
+
+    def fuse_to_zarr(
+        self, output_path: Path, fused_image_shape: Tuple[int, ...]
+    ) -> None:
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        output_slice_axis = 1
 
         chunk_shape_list = list(fused_image_shape)
         chunk_shape_list[output_slice_axis] = 1
@@ -482,12 +489,6 @@ class ImageMosaic:
         if self.num_channels > 1:
             fused_image_shape = (self.num_channels, *fused_image_shape)
             chunk_shape = (self.num_channels, *chunk_shape)
-
-        if normalise_intensity:
-            self.normalise_intensity(0, 80)
-
-        if interpolate:
-            self.interpolate_overlaps(0)
 
         store = zarr.NestedDirectoryStore(str(output_path))
         root = zarr.group(store=store)
@@ -587,6 +588,86 @@ class ImageMosaic:
             )
 
         root.attrs["omero"] = {"channels": channels}
+
+    def fuse_to_bdv_h5(
+        self, output_path: Path, fused_image_shape: Tuple[int, ...]
+    ) -> None:
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        output_file = h5py.File(output_path, mode="w")
+
+        subdivisions = np.array(
+            [
+                [32, 32, 16],
+                [32, 32, 16],
+                [32, 32, 16],
+                [32, 32, 16],
+                [32, 32, 16],
+            ],
+            dtype=np.int16,
+        )
+        resolutions = np.array(
+            [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]],
+            dtype=np.int16,
+        )
+
+        ds_list = []
+        for i in range(self.num_channels):
+            output_file.require_dataset(
+                f"s{i:02}/resolutions",
+                data=resolutions,
+                dtype="i2",
+                shape=resolutions.shape,
+            )
+            output_file.require_dataset(
+                f"s{i:02}/subdivisions",
+                data=subdivisions,
+                dtype="i2",
+                shape=subdivisions.shape,
+            )
+            ds = output_file.require_dataset(
+                f"t00000/s{i:02}/0/cells",
+                shape=fused_image_shape,
+                dtype="i2",
+            )
+            ds_list.append(ds)
+
+        for tile in self.tiles[-1::-1]:
+            ds_list[tile.channel_id][
+                tile.position[0] : tile.position[0] + z_size,
+                tile.position[1] : tile.position[1] + y_size,
+                tile.position[2] : tile.position[2] + x_size,
+            ] = tile.data_pyramid[0].compute()
+            print(f"Done tile {tile.id}")
+
+        for i in range(1, len(resolutions)):
+            for j in range(self.num_channels):
+                prev_resolution = da.from_array(
+                    output_file[f"t00000/s{j:02}/{i - 1}/cells"]
+                )
+
+                downsampled_image = downscale_nearest(
+                    prev_resolution, (1, 2, 2)
+                )
+
+                downsampled_shape = downsampled_image.shape
+                downsampled_dataset = output_file.require_dataset(
+                    f"t00000/s{j:02}/{i}/cells",
+                    shape=downsampled_shape,
+                    dtype="i2",
+                )
+                downsampled_dataset[...] = downsampled_image.compute()
+
+            print(f"Done resolution {i}")
+
+        assert self.xml_path is not None
+
+        write_bdv_xml(
+            output_path.with_suffix(".xml"),
+            self.xml_path,
+            output_path,
+            fused_image_shape,
+        )
+        output_file.close()
 
     def get_metadata_for_zarr(self, pyramid_depth: int = 5):
         axes = [

@@ -188,12 +188,16 @@ class StitchingWidget(QWidget):
         self.fuse_option_widget.setLayout(QFormLayout())
         self.normalise_intensity_toggle = QCheckBox()
         self.interpolate_toggle = QCheckBox()
+        self.output_file_name_field = QLineEdit()
 
         self.fuse_option_widget.layout().addRow(
             "Normalise intensity:", self.normalise_intensity_toggle
         )
         self.fuse_option_widget.layout().addRow(
             "Interpolate overlaps:", self.interpolate_toggle
+        )
+        self.fuse_option_widget.layout().addRow(
+            "Output file name:", self.output_file_name_field
         )
 
         self.layout().addWidget(self.fuse_option_widget)
@@ -308,9 +312,22 @@ class StitchingWidget(QWidget):
         return
 
     def _on_fuse_button_clicked(self):
+        if not self.output_file_name_field.text():
+            show_warning("Output file name not specified")
+            return
+
+        if not (
+            self.output_file_name_field.text().endswith(".zarr")
+            or self.output_file_name_field.text().endswith(".h5")
+        ):
+            show_warning(
+                "Output file name should either end with .zarr or .h5"
+            )
+            return
+
         fuse(
             self.image_mosaic,
-            "fused.zarr",
+            self.output_file_name_field.text(),
             self.normalise_intensity_toggle.isChecked(),
             self.interpolate_toggle.isChecked(),
         )

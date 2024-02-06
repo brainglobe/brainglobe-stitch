@@ -102,15 +102,11 @@ def write_bdv_xml(
     input_tree = ET.parse(input_xml_path)
     input_root = input_tree.getroot()
 
-    generated_by = input_root.find(".//generatedBy")
     base_path = input_root.find(".//BasePath")
 
     root = ET.Element("SpimData", version="0.2")
-    assert (
-        generated_by is not None
-    ), "No generatedBy tag found in the input XML file"
+
     assert base_path is not None, "No BasePath tag found in the input XML file"
-    root.append(generated_by)
     root.append(base_path)
 
     sequence_desc = ET.SubElement(root, "SequenceDescription")
@@ -123,14 +119,14 @@ def write_bdv_xml(
     assert (
         hdf5_path_node is not None
     ), "No hdf5 tag found in the input XML file"
-    hdf5_path_node.text = str(hdf5_path)
+    hdf5_path_node.text = str(hdf5_path.name)
     sequence_desc.append(image_loader)
 
     view_setup = input_root.find(".//ViewSetup")
     assert (
         view_setup is not None
     ), "No ViewSetup tag found in the input XML file"
-    view_setup[3].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
+    view_setup[2].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
 
     view_setups = ET.SubElement(sequence_desc, "ViewSetups")
     view_setups.append(view_setup)
