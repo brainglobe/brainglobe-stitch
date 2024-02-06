@@ -2,8 +2,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List
 
+import dask.array as da
 import h5py
 import numpy.typing as npt
+import zarr
+from tifffile import imwrite
 
 HEADERS = [
     "[POSITION]",
@@ -209,6 +212,31 @@ def check_mesospim_directory(
         raise FileNotFoundError("Expected 1 h5 file, found {len(h5_path)}")
 
     return xml_path[0], meta_path[0], h5_path[0]
+
+
+def write_tiff(
+    source_file: Path, output_file: Path, resolution_level: int = 2
+):
+    if source_file.suffix == ".zarr":
+        store = zarr.NestedDirectoryStore(str(source_file))
+        root = zarr.group(store=store)
+        data = root[str(resolution_level)]
+        scale = root.attrs["multiscales"][0]["datasets"][resolution_level][
+            "coordinateTransformations"
+        ][0]["scale"][1:]
+        adjusted_array = da.swapaxes(data, 0, 1)
+
+        imwrite(
+            output_file,
+            adjusted_array,
+            imagej=True,
+            resolution=(1 / scale[1], 1 / scale[2]),
+            metadata={
+                "spacing": scale[0],
+                "unit": "um",
+                "axes": "ZCYX",
+            },
+        )
 
 
 def get_slice_attributes(
