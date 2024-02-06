@@ -18,7 +18,6 @@ from mesospim_stitcher.file_utils import (
     create_pyramid_bdv_h5,
     get_slice_attributes,
     parse_mesospim_metadata,
-    write_big_stitcher_tile_config,
 )
 from mesospim_stitcher.fuse import get_big_stitcher_transforms
 from mesospim_stitcher.tile import Overlap, Tile
@@ -97,12 +96,7 @@ class ImageMosaic:
             str(self.xml_path)[:-4] + "_tile_config.txt"
         )
 
-        if not self.tile_config_path.exists():
-            tile_metadata = write_big_stitcher_tile_config(
-                self.meta_path, self.h5_path
-            )
-        else:
-            tile_metadata = parse_mesospim_metadata(self.meta_path)
+        tile_metadata = parse_mesospim_metadata(self.meta_path)
 
         self.channel_names = []
         idx = 0
@@ -137,20 +131,67 @@ class ImageMosaic:
                 self.h5_file[f"{tile_name}/resolutions"]
             )
 
-        with open(self.tile_config_path, "r") as f:
-            # Skip header
-            f.readline()
+        if not self.tile_config_path.exists():
+            self.write_big_stitcher_tile_config(self.meta_path, tile_metadata)
+        else:
+            with open(self.tile_config_path, "r") as f:
+                # Skip header
+                f.readline()
 
-            for line, tile in zip(f.readlines(), self.tiles):
-                split_line = line.split(";")[-1].strip("()\n").split(",")
-                # BigStitcher uses x,y,z order
-                # Switch to z,y,x order
-                translation = [
-                    int(split_line[2]),
-                    int(split_line[1]),
-                    int(split_line[0]),
+                for line, tile in zip(f.readlines(), self.tiles):
+                    split_line = line.split(";")[-1].strip("()\n").split(",")
+                    # BigStitcher uses x,y,z order
+                    # Switch to z,y,x order
+                    translation = [
+                        int(split_line[2]),
+                        int(split_line[1]),
+                        int(split_line[0]),
+                    ]
+                    tile.position = translation
+
+    def write_big_stitcher_tile_config(
+        self, meta_file_name: Path, tile_metadata: List[Dict]
+    ) -> List[Dict]:
+        output_file = str(meta_file_name)[:-12] + "_tile_config.txt"
+
+        tile_xy_locations = []
+        for i in range(0, len(self.tiles), self.num_channels):
+            curr_tile_dict = tile_metadata[i]
+
+            x = round(
+                curr_tile_dict["x_pos"] / curr_tile_dict["Pixelsize in um"]
+            )
+            y = round(
+                curr_tile_dict["y_pos"] / curr_tile_dict["Pixelsize in um"]
+            )
+
+            tile_xy_locations.append((x, y))
+
+        relative_locations = [(0, 0)]
+
+        for abs_tuple in tile_xy_locations[1:]:
+            rel_tuple = (
+                abs(abs_tuple[0] - tile_xy_locations[0][0]),
+                abs(abs_tuple[1] - tile_xy_locations[0][1]),
+            )
+            relative_locations.append(rel_tuple)
+
+        with open(output_file, "w") as f:
+            f.write("dim=3\n")
+            for tile, tile_name in zip(self.tiles, self.tile_names):
+                f.write(
+                    f"{tile_name[1:]};;"
+                    f"({relative_locations[tile.tile_id][0]},"
+                    f"{relative_locations[tile.tile_id][1]},0)\n"
+                )
+                # BigStitcher uses x,y,z order, switch to z,y,x order
+                tile.position = [
+                    0,
+                    relative_locations[tile.tile_id][1],
+                    relative_locations[tile.tile_id][0],
                 ]
-                tile.position = translation
+
+        return tile_metadata
 
     def stitch(
         self,
@@ -240,8 +281,14 @@ class ImageMosaic:
                 position_j = tile_j.position
 
                 if (
-                    (position_i[1] + y_size > position_j[1])
-                    and (position_i[2] + x_size > position_j[2])
+                    (
+                        position_i[1] + y_size > position_j[1]
+                        and position_i[1] < position_j[1] + y_size
+                    )
+                    and (
+                        position_i[2] + x_size > position_j[2]
+                        and position_i[2] < position_j[2] + x_size
+                    )
                     and (tile_i.tile_id != tile_j.tile_id)
                     and (tile_i.channel_id == tile_j.channel_id)
                 ):
@@ -499,6 +546,8 @@ class ImageMosaic:
                 compressor=compressor,
             )
             downsampled_image.to_zarr(downsampled_store)
+
+            print(f"Done resolution {i}")
 
         datasets = []
 

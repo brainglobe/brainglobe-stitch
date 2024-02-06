@@ -60,60 +60,6 @@ def create_pyramid_bdv_h5(
                 yield int(100 * num_done / num_slices)
 
 
-def write_big_stitcher_tile_config(
-    meta_file_name: Path, h5_path: Path
-) -> list[dict]:
-    tile_metadata = parse_mesospim_metadata(meta_file_name)
-
-    output_file = str(meta_file_name)[:-12] + "_tile_config.txt"
-
-    first_channel = tile_metadata[0]["Laser"]
-    num_channels = 1
-
-    for metadata in tile_metadata[1:]:
-        if metadata["Laser"] == first_channel:
-            break
-        else:
-            num_channels += 1
-
-    num_tiles = len(tile_metadata) // num_channels
-    tile_xy_locations = []
-
-    for i in range(0, len(tile_metadata), num_channels):
-        curr_tile_dict = tile_metadata[i]
-
-        x = round(curr_tile_dict["x_pos"] / curr_tile_dict["Pixelsize in um"])
-        y = round(curr_tile_dict["y_pos"] / curr_tile_dict["Pixelsize in um"])
-
-        tile_xy_locations.append((x, y))
-
-    relative_locations = [(0, 0)]
-
-    for abs_tuple in tile_xy_locations[1:]:
-        rel_tuple = (
-            abs(abs_tuple[0] - tile_xy_locations[0][0]),
-            abs(abs_tuple[1] - tile_xy_locations[0][1]),
-        )
-        relative_locations.append(rel_tuple)
-
-    tile_names = []
-    with h5py.File(h5_path, "r") as f:
-        for tile in f["t00000"]:
-            tile_names.append(tile)
-
-    with open(output_file, "w") as f:
-        f.write("dim=3\n")
-        for i, tile_name in enumerate(tile_names):
-            tile_index = (i % num_channels) + (i // num_tiles) * num_channels
-            f.write(
-                f"{tile_name[1:]};;"
-                f"({relative_locations[tile_index][0]},"
-                f"{relative_locations[tile_index][1]},0)\n"
-            )
-
-    return tile_metadata
-
-
 def parse_mesospim_metadata(meta_file_name: Path):
     tile_metadata = []
     with open(meta_file_name, "r") as f:
