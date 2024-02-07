@@ -16,16 +16,17 @@ from mesospim_stitcher.big_stitcher_bridge import run_big_stitcher
 from mesospim_stitcher.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
+    get_big_stitcher_transforms,
     get_slice_attributes,
     parse_mesospim_metadata,
     write_bdv_xml,
 )
-from mesospim_stitcher.fuse import get_big_stitcher_transforms
 from mesospim_stitcher.tile import Overlap, Tile
 
 DOWNSAMPLE_ARRAY = np.array(
     [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
 )
+
 SUBDIVISION_ARRAY = np.array(
     [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
 )
@@ -624,7 +625,7 @@ class ImageMosaic:
                 dtype="i2",
                 shape=subdivisions.shape,
             )
-            ds = output_file.create_dataset(
+            ds = output_file.require_dataset(
                 f"t00000/s{i:02}/0/cells",
                 shape=fused_image_shape,
                 chunks=(128, 128, 128),
@@ -633,12 +634,6 @@ class ImageMosaic:
             ds_list.append(ds)
 
         for tile in self.tiles[-1::-1]:
-            # fused_images[tile.channel_id] [
-            #     tile.position[0] : tile.position[0] + z_size,
-            #     tile.position[1] : tile.position[1] + y_size,
-            #     tile.position[2] : tile.position[2] + x_size,
-            # ] = tile.data_pyramid[0]
-
             ds_list[tile.channel_id][
                 tile.position[0] : tile.position[0] + z_size,
                 tile.position[1] : tile.position[1] + y_size,
@@ -661,14 +656,6 @@ class ImageMosaic:
                 dtype="i2",
                 shape=subdivisions.shape,
             )
-            # print(f"s{i:02}/subdivisions")
-            # output_file.create_dataset(
-            #     f"t00000/s{i:02}/0/cells",
-            #     data=fused_images[i].compute(),
-            #     shape=fused_image_shape,
-            #     chunks=fused_images[i].chunks,
-            #     dtype="i2",
-            # )
 
         for i in range(1, len(resolutions)):
             for j in range(self.num_channels):

@@ -192,20 +192,20 @@ def check_mesospim_directory(
 ) -> tuple[Path, Path, Path]:
     xml_path = list(mesospim_directory.glob("*bdv.xml"))
     meta_path = list(mesospim_directory.glob("*h5_meta.txt"))
-    h5_path = list(mesospim_directory.glob("*.h5"))
+    h5_path = list(mesospim_directory.glob("*bdv.h5"))
 
     if len(xml_path) != 1:
         raise FileNotFoundError(
-            "Expected 1 bdv.xml file, found {len(xml_path)}"
+            f"Expected 1 bdv.xml file, found {len(xml_path)}"
         )
 
     if len(meta_path) != 1:
         raise FileNotFoundError(
-            "Expected 1 h5_meta.txt file, found {len(meta_path)}"
+            f"Expected 1 h5_meta.txt file, found {len(meta_path)}"
         )
 
     if len(h5_path) != 1:
-        raise FileNotFoundError("Expected 1 h5 file, found {len(h5_path)}")
+        raise FileNotFoundError(f"Expected 1 h5 file, found {len(h5_path)}")
 
     return xml_path[0], meta_path[0], h5_path[0]
 
@@ -251,3 +251,75 @@ def get_slice_attributes(
         slice_attributes[name] = sub_dict
 
     return slice_attributes
+
+
+def get_big_stitcher_transforms(xml_path, x_size, y_size, z_size):
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    stitch_transforms = root.findall(
+        ".//ViewTransform/[Name='Stitching Transform']/affine"
+    )
+    assert (
+        stitch_transforms is not None
+    ), "No stitching transforms found in XML file"
+    grid_transforms = root.findall(
+        ".//ViewTransform/[Name='Translation from Tile Configuration']/affine"
+    )
+    if len(grid_transforms) == 0:
+        grid_transforms = root.findall(
+            ".//ViewTransform/[Name='Translation to Regular Grid']/affine"
+        )
+    assert grid_transforms is not None, "No grid transforms found in XML file"
+    z_scale_str = root.find(".//ViewTransform/[Name='calibration']/affine")
+    assert z_scale_str is not None, "No z scale found in XML file"
+    assert z_scale_str.text is not None, "No z scale found in XML file"
+    z_scale = float(z_scale_str.text.split()[-2])
+    deltas = []
+    grids = []
+    for i in range(len(stitch_transforms)):
+        delta_nums_text = stitch_transforms[i].text
+        grid_nums_text = grid_transforms[i].text
+
+        assert (
+            delta_nums_text is not None
+        ), "Error reading stitch transform from XML file"
+        assert (
+            grid_nums_text is not None
+        ), "Error reading grid transform from XML file"
+
+        delta_nums = delta_nums_text.split()
+        grid_nums = grid_nums_text.split()
+
+        curr_delta = [
+            round(float(delta_nums[3])),
+            round(float(delta_nums[7])),
+            round(float(delta_nums[11]) / z_scale),
+        ]
+        curr_grid = [
+            round(float(grid_nums[3])),
+            round(float(grid_nums[7])),
+            round(float(grid_nums[11]) / z_scale),
+        ]
+        deltas.append(curr_delta)
+        grids.append(curr_grid)
+
+    min_grid = [min([grid[i] for grid in grids]) for i in range(3)]
+    grids = [[grid[i] - min_grid[i] for i in range(3)] for grid in grids]
+    max_delta = [max([abs(delta[i]) for delta in deltas]) for i in range(3)]
+
+    translations = []
+
+    for i in range(len(deltas)):
+        curr_delta = deltas[i]
+        curr_grid = grids[i]
+
+        x_start = curr_grid[0] + curr_delta[0] + max_delta[0]
+        x_end = x_start + x_size
+        y_start = curr_grid[1] + curr_delta[1] + max_delta[1]
+        y_end = y_start + y_size
+        z_start = curr_grid[2] + curr_delta[2] + max_delta[2]
+        z_end = z_start + z_size
+
+        translations.append([x_start, x_end, y_start, y_end, z_start, z_end])
+
+    return translations
