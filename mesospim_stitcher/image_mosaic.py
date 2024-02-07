@@ -624,20 +624,51 @@ class ImageMosaic:
                 dtype="i2",
                 shape=subdivisions.shape,
             )
-            ds = output_file.require_dataset(
+            ds = output_file.create_dataset(
                 f"t00000/s{i:02}/0/cells",
                 shape=fused_image_shape,
+                chunks=(128, 128, 128),
                 dtype="i2",
             )
             ds_list.append(ds)
 
         for tile in self.tiles[-1::-1]:
+            # fused_images[tile.channel_id] [
+            #     tile.position[0] : tile.position[0] + z_size,
+            #     tile.position[1] : tile.position[1] + y_size,
+            #     tile.position[2] : tile.position[2] + x_size,
+            # ] = tile.data_pyramid[0]
+
             ds_list[tile.channel_id][
                 tile.position[0] : tile.position[0] + z_size,
                 tile.position[1] : tile.position[1] + y_size,
                 tile.position[2] : tile.position[2] + x_size,
             ] = tile.data_pyramid[0].compute()
+
             print(f"Done tile {tile.id}")
+
+        for i in range(self.num_channels):
+            output_file.require_dataset(
+                f"s{i:02}/resolutions",
+                data=resolutions,
+                dtype="i2",
+                shape=resolutions.shape,
+            )
+            print(f"s{i:02}/resolutions")
+            output_file.require_dataset(
+                f"s{i:02}/subdivisions",
+                data=subdivisions,
+                dtype="i2",
+                shape=subdivisions.shape,
+            )
+            # print(f"s{i:02}/subdivisions")
+            # output_file.create_dataset(
+            #     f"t00000/s{i:02}/0/cells",
+            #     data=fused_images[i].compute(),
+            #     shape=fused_image_shape,
+            #     chunks=fused_images[i].chunks,
+            #     dtype="i2",
+            # )
 
         for i in range(1, len(resolutions)):
             for j in range(self.num_channels):
@@ -650,12 +681,13 @@ class ImageMosaic:
                 )
 
                 downsampled_shape = downsampled_image.shape
-                downsampled_dataset = output_file.require_dataset(
+                output_file.require_dataset(
                     f"t00000/s{j:02}/{i}/cells",
+                    data=downsampled_image.compute(),
                     shape=downsampled_shape,
+                    chunks=downsampled_image.chunks,
                     dtype="i2",
                 )
-                downsampled_dataset[...] = downsampled_image.compute()
 
             print(f"Done resolution {i}")
 
