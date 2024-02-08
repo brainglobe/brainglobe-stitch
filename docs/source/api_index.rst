@@ -4,7 +4,7 @@ API
 math
 ----
 
-.. currentmodule:: mesospim-stitcher.math
+.. currentmodule:: brainglobe-stitch.math
 
 .. autosummary::
     :toctree: api_generated
@@ -16,7 +16,7 @@ math
 greetings
 ---------
 
-.. currentmodule:: mesospim-stitcher.greetings
+.. currentmodule:: brainglobe-stitch.greetings
 
 .. autosummary::
     :toctree: api_generated
