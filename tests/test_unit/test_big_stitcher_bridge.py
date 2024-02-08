@@ -10,7 +10,10 @@ IMAGEJ_PATH_WINDOWS = Path("C:/Fiji.app/ImageJ-win64.exe")
 XML_PATH_WINDOWS = Path("C:/stitching/Brain2/bdv.xml")
 TILE_CONFIG_PATH_WINDOWS = Path("C:/stitching/Brain2/bdv_tile_config.txt")
 
-IMAGEJ_PATH_MAC = Path("/Users/user/Fiji.app/Contents/MacOS/ImageJ-macosx")
+IMAGEJ_PATH_MAC = Path("/Users/user/Fiji.app")
+IMAGEJ_PATH_MAC_CHECK = Path(
+    "/Users/user/Fiji.app/Fiji.app/Contents/MacOS/ImageJ-macosx"
+)
 XML_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv.xml")
 TILE_CONFIG_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv_tile_config.txt")
 
@@ -32,6 +35,9 @@ def test_run_big_stitcher_defaults(mocker):
     run_big_stitcher(imagej_path, xml_path, tile_config_path)
 
     macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
+
+    if platform.startswith("darwin"):
+        imagej_path = IMAGEJ_PATH_MAC_CHECK
 
     command = (
         f"{imagej_path} --ij2"
@@ -86,6 +92,9 @@ def test_run_big_stitcher(
     )
 
     macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
+
+    if platform.startswith("darwin"):
+        imagej_path = IMAGEJ_PATH_MAC_CHECK
 
     command = (
         f"{imagej_path} --ij2"
