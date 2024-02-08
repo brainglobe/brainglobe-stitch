@@ -4,7 +4,7 @@ from typing import Dict, List
 
 import dask.array as da
 import h5py
-import numpy.typing as npt
+import numpy as np
 import zarr
 from tifffile import imwrite
 
@@ -18,10 +18,16 @@ HEADERS = [
 
 def create_pyramid_bdv_h5(
     input_file: Path,
-    resolutions_array: npt.NDArray,
-    subdivisions_array: npt.NDArray,
     yield_progress: bool = False,
 ):
+    resolutions_array = np.array(
+        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
+    )
+
+    subdivisions_array = np.array(
+        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
+    )
+
     with h5py.File(input_file, "r+") as f:
         data_group = f["t00000"]
         num_done = 0

@@ -13,7 +13,9 @@ def run_big_stitcher(
     downsample_y: int = 4,
     downsample_z: int = 4,
 ):
-    stitch_macro_path = Path(__file__).resolve().parent / "stitch_macro.ijm"
+    stitch_macro_path = (
+        Path(__file__).resolve().parent / "bigstitcher_macro.ijm"
+    )
 
     if platform.startswith("darwin"):
         imagej_path = imagej_path / "Contents/MacOS/ImageJ-macosx"

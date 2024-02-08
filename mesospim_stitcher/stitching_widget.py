@@ -4,7 +4,6 @@ from typing import Dict, List, Tuple
 import dask.array as da
 import h5py
 import napari.layers
-import numpy as np
 from brainglobe_utils.qtpy.logo import header_widget
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
@@ -38,14 +37,6 @@ from mesospim_stitcher.file_utils import (
 )
 from mesospim_stitcher.image_mosaic import ImageMosaic
 from mesospim_stitcher.tile import Tile
-
-DOWNSAMPLE_ARRAY = np.array(
-    [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
-)
-
-SUBDIVISION_ARRAY = np.array(
-    [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
-)
 
 
 class StitchingWidget(QWidget):
@@ -244,8 +235,6 @@ class StitchingWidget(QWidget):
         worker = create_worker(
             create_pyramid_bdv_h5,
             self.h5_path,
-            DOWNSAMPLE_ARRAY,
-            SUBDIVISION_ARRAY,
             yield_progress=True,
         )
         worker.yielded.connect(self.progress_bar.setValue)
@@ -375,8 +364,3 @@ class StitchingWidget(QWidget):
             tile_data, tile_position = data
             tile_layer.data = tile_data
             tile_layer.translate = tile_position
-
-    # def hideEvent(self, a0, QHideEvent=None):
-    #     super().hideEvent(a0)
-    #     if self.h5_file:
-    #         self.h5_file.close()
