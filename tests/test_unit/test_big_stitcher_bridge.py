@@ -12,7 +12,7 @@ TILE_CONFIG_PATH_WINDOWS = Path("C:/stitching/Brain2/bdv_tile_config.txt")
 
 IMAGEJ_PATH_MAC = Path("/Users/user/Fiji.app")
 IMAGEJ_PATH_MAC_CHECK = Path(
-    "/Users/user/Fiji.app/Fiji.app/Contents/MacOS/ImageJ-macosx"
+    "/Users/user/Fiji.app/Contents/MacOS/ImageJ-macosx"
 )
 XML_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv.xml")
 TILE_CONFIG_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv_tile_config.txt")
