@@ -583,92 +583,92 @@ class ImageMosaic:
     def fuse_to_bdv_h5(
         self, output_path: Path, fused_image_shape: Tuple[int, ...]
     ) -> None:
-        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
-        output_file = h5py.File(output_path, mode="w")
-
-        subdivisions = np.array(
-            [
-                [32, 32, 16],
-                [32, 32, 16],
-                [32, 32, 16],
-                [32, 32, 16],
-                [32, 32, 16],
-            ],
-            dtype=np.int16,
-        )
-        resolutions = np.array(
-            [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]],
-            dtype=np.int16,
-        )
-
-        channel_ds_list = []
-        for i in range(self.num_channels):
-            output_file.require_dataset(
-                f"s{i:02}/resolutions",
-                data=resolutions,
-                dtype="i2",
-                shape=resolutions.shape,
-            )
-            output_file.require_dataset(
-                f"s{i:02}/subdivisions",
-                data=subdivisions,
-                dtype="i2",
-                shape=subdivisions.shape,
-            )
-
-            ds_list = []
-            ds = output_file.require_dataset(
-                f"t00000/s{i:02}/0/cells",
-                shape=fused_image_shape,
-                chunks=(256, 256, 256),
-                dtype="i2",
-            )
-            ds_list.append(ds)
-
-            for j in range(1, len(resolutions)):
-                new_shape = (
-                    fused_image_shape[0],
-                    (fused_image_shape[1] + 1) // 2**j,
-                    (fused_image_shape[2] + 1) // 2**j,
-                )
-
-                down_ds = output_file.require_dataset(
-                    f"t00000/s{i:02}/{j}/cells",
-                    shape=new_shape,
-                    chunks=(256, 256, 256),
-                    dtype="i2",
-                )
-
-                ds_list.append(down_ds)
-
-            channel_ds_list.append(ds_list)
-
-        for tile in self.tiles[-1::-1]:
-            current_tile_data = tile.data_pyramid[0].compute()
-            channel_ds_list[tile.channel_id][0][
-                tile.position[0] : tile.position[0] + z_size,
-                tile.position[1] : tile.position[1] + y_size,
-                tile.position[2] : tile.position[2] + x_size,
-            ] = current_tile_data
-
-            for i in range(1, len(resolutions)):
-                scaled_position = tile.position // resolutions[i, -1::-1]
-                scaled_size = (
-                    z_size // resolutions[i][2],
-                    (y_size + 1) // resolutions[i][1],
-                    (x_size + 1) // resolutions[i][0],
-                )
-                channel_ds_list[tile.channel_id][i][
-                    scaled_position[0] : scaled_position[0] + scaled_size[0],
-                    scaled_position[1] : scaled_position[1] + scaled_size[1],
-                    scaled_position[2] : scaled_position[2] + scaled_size[2],
-                ] = current_tile_data[
-                    :: resolutions[i][2],
-                    :: resolutions[i][1],
-                    :: resolutions[i][0],
-                ]
-
-            print(f"Done tile {tile.id}")
+        # z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        # output_file = h5py.File(output_path, mode="w")
+        #
+        # subdivisions = np.array(
+        #     [
+        #         [32, 32, 16],
+        #         [32, 32, 16],
+        #         [32, 32, 16],
+        #         [32, 32, 16],
+        #         [32, 32, 16],
+        #     ],
+        #     dtype=np.int16,
+        # )
+        # resolutions = np.array(
+        #     [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]],
+        #     dtype=np.int16,
+        # )
+        #
+        # channel_ds_list = []
+        # for i in range(self.num_channels):
+        #     output_file.require_dataset(
+        #         f"s{i:02}/resolutions",
+        #         data=resolutions,
+        #         dtype="i2",
+        #         shape=resolutions.shape,
+        #     )
+        #     output_file.require_dataset(
+        #         f"s{i:02}/subdivisions",
+        #         data=subdivisions,
+        #         dtype="i2",
+        #         shape=subdivisions.shape,
+        #     )
+        #
+        #     ds_list = []
+        #     ds = output_file.require_dataset(
+        #         f"t00000/s{i:02}/0/cells",
+        #         shape=fused_image_shape,
+        #         chunks=(256, 256, 256),
+        #         dtype="i2",
+        #     )
+        #     ds_list.append(ds)
+        #
+        #     for j in range(1, len(resolutions)):
+        #         new_shape = (
+        #             fused_image_shape[0],
+        #             (fused_image_shape[1] + 1) // 2**j,
+        #             (fused_image_shape[2] + 1) // 2**j,
+        #         )
+        #
+        #         down_ds = output_file.require_dataset(
+        #             f"t00000/s{i:02}/{j}/cells",
+        #             shape=new_shape,
+        #             chunks=(256, 256, 256),
+        #             dtype="i2",
+        #         )
+        #
+        #         ds_list.append(down_ds)
+        #
+        #     channel_ds_list.append(ds_list)
+        #
+        # for tile in self.tiles[-1::-1]:
+        #     current_tile_data = tile.data_pyramid[0].compute()
+        #     channel_ds_list[tile.channel_id][0][
+        #         tile.position[0] : tile.position[0] + z_size,
+        #         tile.position[1] : tile.position[1] + y_size,
+        #         tile.position[2] : tile.position[2] + x_size,
+        #     ] = current_tile_data
+        #
+        #     for i in range(1, len(resolutions)):
+        #         scaled_position = tile.position // resolutions[i, -1::-1]
+        #         scaled_size = (
+        #             z_size // resolutions[i][2],
+        #             (y_size + 1) // resolutions[i][1],
+        #             (x_size + 1) // resolutions[i][0],
+        #         )
+        #         channel_ds_list[tile.channel_id][i][
+        #             scaled_position[0] : scaled_position[0] + scaled_size[0],
+        #             scaled_position[1] : scaled_position[1] + scaled_size[1],
+        #             scaled_position[2] : scaled_position[2] + scaled_size[2],
+        #         ] = current_tile_data[
+        #             :: resolutions[i][2],
+        #             :: resolutions[i][1],
+        #             :: resolutions[i][0],
+        #         ]
+        #
+        #     print(f"Done tile {tile.id}")
 
         assert self.xml_path is not None
 
@@ -677,9 +677,10 @@ class ImageMosaic:
             self.xml_path,
             output_path,
             fused_image_shape,
+            self.num_channels,
         )
 
-        output_file.close()
+        # output_file.close()
 
     def get_metadata_for_zarr(self, pyramid_depth: int = 5):
         axes = [

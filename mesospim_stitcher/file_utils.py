@@ -1,6 +1,7 @@
+import copy
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import dask.array as da
 import h5py
@@ -103,7 +104,8 @@ def write_bdv_xml(
     output_xml_path: Path,
     input_xml_path: Path,
     hdf5_path: Path,
-    image_size: tuple,
+    image_size: Tuple,
+    num_channels: int,
 ):
     input_tree = ET.parse(input_xml_path)
     input_root = input_tree.getroot()
@@ -136,6 +138,13 @@ def write_bdv_xml(
 
     view_setups = ET.SubElement(sequence_desc, "ViewSetups")
     view_setups.append(view_setup)
+
+    for i in range(1, num_channels):
+        view_setup_copy = copy.deepcopy(view_setup)
+        view_setup_copy[0].text = f"{i}"
+        view_setup_copy[1].text = f"setup {i}"
+        view_setup_copy[4][1].text = f"{i}"
+        view_setups.append(view_setup_copy)
 
     attributes_illumination = input_root.find(
         ".//Attributes[@name='illumination']"
@@ -173,18 +182,19 @@ def write_bdv_xml(
 
     sequence_desc.append(timepoints)
     sequence_desc.append(missing_views)
-
     view_registrations = ET.SubElement(root, "ViewRegistrations")
-    view_registration = ET.SubElement(
-        view_registrations,
-        "ViewRegistration",
-        attrib={"timepoint": "0", "setup": "0"},
-    )
-    calibration = input_root.find(".//ViewTransform/[Name='calibration']")
-    assert (
-        calibration is not None
-    ), "No calibration tag found in the input XML file"
-    view_registration.append(calibration)
+
+    for i in range(num_channels):
+        view_registration = ET.SubElement(
+            view_registrations,
+            "ViewRegistration",
+            attrib={"timepoint": "0", "setup": f"{i}"},
+        )
+        calibration = input_root.find(".//ViewTransform/[Name='calibration']")
+        assert (
+            calibration is not None
+        ), "No calibration tag found in the input XML file"
+        view_registration.append(calibration)
 
     tree = ET.ElementTree(root)
     ET.indent(tree, space="  ")
