@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mesospim_stitcher.image_mosaic import ImageMosaic
+from brainglobe_stitch.image_mosaic import ImageMosaic
 
 
 def load(directory: Path) -> ImageMosaic:

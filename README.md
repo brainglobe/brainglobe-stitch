@@ -1,1 +1,1 @@
-# mesospim-stitcher
+# brainglobe-stitch

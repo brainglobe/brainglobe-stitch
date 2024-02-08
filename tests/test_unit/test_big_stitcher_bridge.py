@@ -1,7 +1,7 @@
 from importlib.resources import files
 from pathlib import Path
 
-from mesospim_stitcher.big_stitcher_bridge import run_big_stitcher
+from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
 
 IMAGEJ_PATH_WINDOWS = Path("C:/Fiji.app/ImageJ-win64.exe")
 XML_PATH = Path("C:/stitching/Brain2/bdv.xml")

@@ -2,12 +2,12 @@ include LICENSE
 include README.md
 include .napari-hub/DESCRIPTION.md
 include .napari-hub/config.yml
-include mesospim_stitcher/napari.yaml
+include brainglobe_stitch/napari.yaml
 exclude .pre-commit-config.yaml
 exclude *.ipynb
 
-recursive-include mesospim_stitcher *.py
-recursive-include mesospim_stitcher *.ijm
+recursive-include brainglobe_stitch *.py
+recursive-include brainglobe_stitch *.ijm
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]

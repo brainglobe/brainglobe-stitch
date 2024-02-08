@@ -24,19 +24,19 @@ from qtpy.QtWidgets import (
 )
 from superqt import QCollapsible
 
-from mesospim_stitcher.core import (
+from brainglobe_stitch.core import (
     fuse,
     interpolate_overlaps,
     load,
     normalise_intensity,
     stitch,
 )
-from mesospim_stitcher.file_utils import (
+from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
 )
-from mesospim_stitcher.image_mosaic import ImageMosaic
-from mesospim_stitcher.tile import Tile
+from brainglobe_stitch.image_mosaic import ImageMosaic
+from brainglobe_stitch.tile import Tile
 
 
 class StitchingWidget(QWidget):
