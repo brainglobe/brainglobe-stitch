@@ -35,20 +35,3 @@ def fuse(
     interpolate: bool = False,
 ) -> None:
     image_mosaic.fuse(output_file_name, normalise_intensity, interpolate)
-
-
-if __name__ == "__main__":
-    data_directory = Path("C:/Users/Igor/Documents/NIU-dev/stitching/Brain2")
-    data_graph = load(data_directory)
-
-    resolution_level = 2
-
-    stitch(
-        data_graph,
-        Path("C:/Users/Igor/Documents/Fiji.app/ImageJ-win64.exe"),
-        selected_channel="561 nm",
-    )
-
-    normalise_intensity(data_graph, resolution_level, 50)
-
-    data_graph.fuse("test.zarr", True)
