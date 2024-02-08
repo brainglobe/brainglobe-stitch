@@ -49,6 +49,7 @@ mesospim-stitcher = "mesospim_stitcher:napari.yaml"
 dev = [
   "pytest",
   "pytest-cov",
+  "pytest-mock",
   "coverage",
   "tox",
   "black",
