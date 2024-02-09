@@ -1,5 +1,4 @@
 import dask.array as da
-import napari
 import numpy as np
 import pytest
 
@@ -79,11 +78,3 @@ def test_overlap_init(generate_tile_data):
     assert overlap.size[0].shape == (3,)
     assert len(overlap.size) == len(tile_j.resolution_pyramid)
     assert len(overlap.local_coordinates) == len(tile_j.resolution_pyramid)
-
-    viewer = napari.Viewer()
-    layer_i = viewer.add_image(tile_i.data_pyramid[0], name="tile_i")
-    layer_j = viewer.add_image(tile_j.data_pyramid[0], name="tile_j")
-    layer_i.translate = tile_i.position
-    layer_j.translate = tile_j.position
-
-    napari.run()
