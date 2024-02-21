@@ -205,10 +205,10 @@ def write_bdv_xml(
 
 def check_mesospim_directory(
     mesospim_directory: Path,
-) -> tuple[Path, Path, Path]:
-    xml_path = list(mesospim_directory.glob("*bdv.xml"))
-    meta_path = list(mesospim_directory.glob("*h5_meta.txt"))
-    h5_path = list(mesospim_directory.glob("*bdv.h5"))
+) -> Tuple[Path, Path, Path]:
+    xml_path = list(mesospim_directory.glob("[!.]*bdv.xml"))
+    meta_path = list(mesospim_directory.glob("[!.]*h5_meta.txt"))
+    h5_path = list(mesospim_directory.glob("[!.]*bdv.h5"))
 
     if len(xml_path) != 1:
         raise FileNotFoundError(
