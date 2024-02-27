@@ -1,6 +1,5 @@
 from importlib.resources import files
 from pathlib import Path
-from sys import platform
 
 import pytest
 
@@ -18,25 +17,34 @@ XML_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv.xml")
 TILE_CONFIG_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv_tile_config.txt")
 
 
-def test_run_big_stitcher_defaults(mocker):
+@pytest.mark.parametrize(
+    "test_platform, imagej_path, xml_path, tile_config_path",
+    [
+        (
+            "Windows",
+            IMAGEJ_PATH_WINDOWS,
+            XML_PATH_WINDOWS,
+            TILE_CONFIG_PATH_WINDOWS,
+        ),
+        ("Darwin", IMAGEJ_PATH_MAC, XML_PATH_MAC, TILE_CONFIG_PATH_MAC),
+    ],
+)
+def test_run_big_stitcher_defaults(
+    mocker, test_platform, imagej_path, xml_path, tile_config_path
+):
     mock_subprocess_run = mocker.patch(
         "brainglobe_stitch.big_stitcher_bridge.subprocess.run"
     )
-
-    imagej_path = IMAGEJ_PATH_WINDOWS
-    xml_path = XML_PATH_WINDOWS
-    tile_config_path = TILE_CONFIG_PATH_WINDOWS
-
-    if platform.startswith("darwin"):
-        imagej_path = IMAGEJ_PATH_MAC
-        xml_path = XML_PATH_MAC
-        tile_config_path = TILE_CONFIG_PATH_MAC
+    mocker.patch(
+        "brainglobe_stitch.big_stitcher_bridge.system",
+        return_value=test_platform,
+    )
 
     run_big_stitcher(imagej_path, xml_path, tile_config_path)
 
     macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
 
-    if platform.startswith("darwin"):
+    if test_platform == "Darwin":
         imagej_path = IMAGEJ_PATH_MAC_CHECK
 
     command = (
@@ -70,15 +78,14 @@ def test_run_big_stitcher(
     mock_subprocess_run = mocker.patch(
         "brainglobe_stitch.big_stitcher_bridge.subprocess.run"
     )
+    mocker.patch(
+        "brainglobe_stitch.big_stitcher_bridge.system",
+        return_value="Windows",
+    )
 
     imagej_path = IMAGEJ_PATH_WINDOWS
     xml_path = XML_PATH_WINDOWS
     tile_config_path = TILE_CONFIG_PATH_WINDOWS
-
-    if platform.startswith("darwin"):
-        imagej_path = IMAGEJ_PATH_MAC
-        xml_path = XML_PATH_MAC
-        tile_config_path = TILE_CONFIG_PATH_MAC
 
     run_big_stitcher(
         imagej_path,
@@ -92,9 +99,6 @@ def test_run_big_stitcher(
     )
 
     macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
-
-    if platform.startswith("darwin"):
-        imagej_path = IMAGEJ_PATH_MAC_CHECK
 
     command = (
         f"{imagej_path} --ij2"

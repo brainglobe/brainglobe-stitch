@@ -70,7 +70,7 @@ def test_overlap_init(generate_tile_data):
     overlap_coordinates = np.array(
         [max(tile_i.position[i], tile_j.position[i]) for i in range(3)]
     )
-    overlap_size = [246, 26, 251]
+    overlap_size = np.array([246, 26, 251])
 
     overlap = Overlap(overlap_coordinates, overlap_size, tile_i, tile_j)
 

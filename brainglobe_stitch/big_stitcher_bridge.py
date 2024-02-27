@@ -1,6 +1,6 @@
 import subprocess
 from pathlib import Path
-from sys import platform
+from platform import system
 
 
 def run_big_stitcher(
@@ -50,7 +50,9 @@ def run_big_stitcher(
         Path(__file__).resolve().parent / "bigstitcher_macro.ijm"
     )
 
-    if platform.startswith("darwin"):
+    platform = system()
+
+    if platform.startswith("Darwin"):
         imagej_path = imagej_path / "Contents/MacOS/ImageJ-macosx"
 
     command = (
