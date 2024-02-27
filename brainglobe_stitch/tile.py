@@ -97,11 +97,11 @@ class Overlap:
         ----------
         overlap_coordinates: npt.NDArray
             The starting coordinates for the overlap in the fused image.
-        overlap_size
-            The size of the overlap in the fused image.
-        tile_i
+        overlap_size: npt.NDArray
+            The size of the overlap in the fused image [z,y,x].
+        tile_i: Tile
             The first tile.
-        tile_j
+        tile_j: Tile
             The second tile.
         """
         self.coordinates: npt.NDArray = overlap_coordinates
@@ -147,6 +147,19 @@ class Overlap:
     def extract_tile_overlaps(
         self, resolution_level: int
     ) -> Tuple[da.Array, da.Array]:
+        """
+        Extract the overlap data from both tiles at a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to extract the overlap data from.
+
+        Returns
+        -------
+        Tuple[da.Array, da.Array]
+            The overlapping data for both tiles.
+        """
         scaled_coordinates = self.local_coordinates[resolution_level]
         scaled_size = self.size[resolution_level]
 
@@ -171,6 +184,17 @@ class Overlap:
         return i_overlap, j_overlap
 
     def replace_overlap_data(self, resolution_level: int, new_data: da.Array):
+        """
+        Replace the overlapping data for both tiles at a given resolution
+        level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to replace the overlapping data at.
+        new_data:
+            The new data to replace the overlapping data with.
+        """
         scaled_coordinates = self.local_coordinates[resolution_level]
         scaled_size = self.size[resolution_level]
 

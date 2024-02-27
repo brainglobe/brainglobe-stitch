@@ -244,7 +244,6 @@ class ImageMosaic:
                 stitcher_translations[tile.id][2],
                 stitcher_translations[tile.id][0],
             ]
-            tile.stitched_position = stitched_position
             tile.position = stitched_position
 
         self.calculate_overlaps()
