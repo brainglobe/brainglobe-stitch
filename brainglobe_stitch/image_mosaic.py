@@ -1,6 +1,6 @@
 from pathlib import Path
 from time import sleep
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import dask.array as da
 import h5py
@@ -70,11 +70,11 @@ class ImageMosaic:
 
     def __init__(self, directory: Path):
         self.directory: Path = directory
-        self.xml_path: Path | None = None
-        self.meta_path: Path | None = None
-        self.h5_path: Path | None = None
-        self.tile_config_path: Path | None = None
-        self.h5_file: h5py.File | None = None
+        self.xml_path: Optional[Path] = None
+        self.meta_path: Optional[Path] = None
+        self.h5_path: Optional[Path] = None
+        self.tile_config_path: Optional[Path] = None
+        self.h5_file: Optional[h5py.File] = None
         self.channel_names: List[str] = []
         self.tiles: List[Tile] = []
         self.tile_names: List[str] = []
@@ -85,7 +85,7 @@ class ImageMosaic:
 
         self.load_mesospim_directory()
 
-        self.scale_factors: npt.NDArray | None = None
+        self.scale_factors: Optional[npt.NDArray] = None
         self.intensity_adjusted: List[bool] = [False] * len(
             self.tiles[0].resolution_pyramid
         )
