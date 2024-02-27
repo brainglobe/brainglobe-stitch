@@ -72,15 +72,6 @@ class Overlap:
     local_coordinates : List[Tuple[npt.NDArray, npt.NDArray]]
         The coordinates for the start of the overlap in each tile's
         data pyramid.
-
-    Methods
-    -------
-    get_local_overlap_indices() -> None:
-        Calculate the local overlap indices for each tile's data pyramid.
-    extract_tile_overlaps(resolution_level: int) -> Tuple[da.Array, da.Array]:
-        Extract the overlap data for both tiles at a given resolution level.
-    replace_overlap_data(resolution_level: int, new_data: da.Array) -> None:
-        Replace the overlap data for both tiles at a given resolution level.
     """
 
     def __init__(
