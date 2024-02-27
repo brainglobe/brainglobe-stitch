@@ -19,7 +19,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "License :: OSI Approved :: BSD License",
     "Topic :: Scientific/Engineering :: Image Processing",
-    "Topic :: Scientific/Engineering :: Image Processing",
 ]
 
 dependencies = [
