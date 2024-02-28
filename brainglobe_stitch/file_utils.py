@@ -1,7 +1,7 @@
 import copy
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import dask.array as da
 import h5py
@@ -21,6 +21,16 @@ def create_pyramid_bdv_h5(
     input_file: Path,
     yield_progress: bool = False,
 ):
+    """
+    Create a resolution pyramid for a Big Data Viewer HDF5 file.
+
+    Parameters
+    ----------
+    input_file: Path
+        The path to the input HDF5 file.
+    yield_progress:
+        Whether to yield progress.
+    """
     resolutions_array = np.array(
         [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
     )
@@ -35,6 +45,7 @@ def create_pyramid_bdv_h5(
         num_slices = len(data_group)
 
         for curr_slice in data_group:
+            # Delete the old resolutions and subdivisions datasets
             del f[f"{curr_slice}/resolutions"]
             del f[f"{curr_slice}/subdivisions"]
             f[f"{curr_slice}/resolutions"] = resolutions_array
@@ -46,6 +57,7 @@ def create_pyramid_bdv_h5(
                     resolutions_array[i] // resolutions_array[i - 1]
                 )
                 prev_resolution = grp[f"{i - 1}/cells"]
+                # Add 1 to account for odd dimensions
                 grp.require_dataset(
                     f"{i}/cells",
                     dtype=prev_resolution.dtype,
@@ -70,24 +82,44 @@ def create_pyramid_bdv_h5(
                 yield int(100 * num_done / num_slices)
 
 
-def parse_mesospim_metadata(meta_file_name: Path):
+def parse_mesospim_metadata(
+    meta_file_name: Path,
+) -> List[Dict[str, Union[str, int, float]]]:
+    """
+    Parse the metadata from a mesoSPIM .h5_meta.txt file.
+
+    Parameters
+    ----------
+    meta_file_name: Path
+        The path to the h5_meta.txt file.
+
+    Returns
+    -------
+    List[Dict[str, Union[str, int, float]]
+        A list of dictionaries containing the metadata for each tile.
+    """
     tile_metadata = []
     with open(meta_file_name, "r") as f:
         lines = f.readlines()
-        curr_tile_metadata: Dict[str, str | int | float] = {}
+        curr_tile_metadata: Dict[str, Union[str, int, float]] = {}
 
         for line in lines[3:]:
             line = line.strip()
+            # Tile metadata is separated by a line starting with [CFG]
             if line.startswith("[CFG"):
                 tile_metadata.append(curr_tile_metadata)
                 curr_tile_metadata = {}
+            # Skip the headers
             elif line in HEADERS:
                 continue
+            # Skip empty lines
             elif not line:
                 continue
             else:
                 split_line = line.split("]")
                 value = split_line[1].strip()
+                # Check if the value is an int or a float
+                # If it is neither, store it as a string
                 if value.isdigit():
                     curr_tile_metadata[split_line[0][1:]] = int(value)
                 else:
@@ -104,9 +136,25 @@ def write_bdv_xml(
     output_xml_path: Path,
     input_xml_path: Path,
     hdf5_path: Path,
-    image_size: Tuple,
+    image_size: Tuple[int, ...],
     num_channels: int,
-):
+) -> None:
+    """
+    Write a Big Data Viewer (BDV) XML file.
+
+    Parameters
+    ----------
+    output_xml_path: Path
+        The path to the output BDV XML file.
+    input_xml_path: Path
+        The path to the input BDV XML file.
+    hdf5_path:
+        The path to the output HDF5 file.
+    image_size:
+        The size of the image in pixels.
+    num_channels:
+        The number of channels in the image.
+    """
     input_tree = ET.parse(input_xml_path)
     input_root = input_tree.getroot()
 
@@ -127,6 +175,7 @@ def write_bdv_xml(
     assert (
         hdf5_path_node is not None
     ), "No hdf5 tag found in the input XML file"
+    # Replace the hdf5 path with the new relative path
     hdf5_path_node.text = str(hdf5_path.name)
     sequence_desc.append(image_loader)
 
@@ -134,11 +183,13 @@ def write_bdv_xml(
     assert (
         view_setup is not None
     ), "No ViewSetup tag found in the input XML file"
+    # Replace the size of the image with the new size
     view_setup[2].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
 
     view_setups = ET.SubElement(sequence_desc, "ViewSetups")
     view_setups.append(view_setup)
 
+    # Add the view setups for the other channels
     for i in range(1, num_channels):
         view_setup_copy = copy.deepcopy(view_setup)
         view_setup_copy[0].text = f"{i}"
@@ -175,15 +226,18 @@ def write_bdv_xml(
     assert (
         timepoints is not None
     ), "No Timepoints tag found in the input XML file"
+    sequence_desc.append(timepoints)
+
     missing_views = input_root.find(".//MissingViews")
     assert (
         missing_views is not None
     ), "No MissingViews tag found in the input XML file"
-
-    sequence_desc.append(timepoints)
     sequence_desc.append(missing_views)
+
     view_registrations = ET.SubElement(root, "ViewRegistrations")
 
+    # Write the calibrations for each channel
+    # Allows BDV to convert pixel coordinates to physical coordinates
     for i in range(num_channels):
         view_registration = ET.SubElement(
             view_registrations,
@@ -197,6 +251,7 @@ def write_bdv_xml(
         view_registration.append(calibration)
 
     tree = ET.ElementTree(root)
+    # Add a two space indentation to the file
     ET.indent(tree, space="  ")
     tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
 
@@ -206,10 +261,26 @@ def write_bdv_xml(
 def check_mesospim_directory(
     mesospim_directory: Path,
 ) -> Tuple[Path, Path, Path]:
+    """
+    Check that the mesoSPIM directory contains the expected files.
+
+    Parameters
+    ----------
+    mesospim_directory: Path
+        The path to the mesoSPIM directory.
+
+    Returns
+    -------
+    Tuple[Path, Path, Path]
+        The paths to the bdv.xml, h5_meta.txt, and bdv.h5 files.
+    """
+    # List all files in the directory that do not start with a period
+    # But end in the correct file extension
     xml_path = list(mesospim_directory.glob("[!.]*bdv.xml"))
     meta_path = list(mesospim_directory.glob("[!.]*h5_meta.txt"))
     h5_path = list(mesospim_directory.glob("[!.]*bdv.h5"))
 
+    # Check that there is exactly one file of each type
     if len(xml_path) != 1:
         raise FileNotFoundError(
             f"Expected 1 bdv.xml file, found {len(xml_path)}"
@@ -228,14 +299,29 @@ def check_mesospim_directory(
 
 def write_tiff(
     source_file: Path, output_file: Path, resolution_level: int = 2
-):
+) -> None:
+    """
+    Write one resolution level of a zarr file to a TIFF file.
+
+    Parameters
+    ----------
+    source_file: Path
+        The path to the source zarr file.
+    output_file: Path
+        The path to the output TIFF file.
+    resolution_level: int
+        The resolution level to write to the TIFF file.
+    """
     if source_file.suffix == ".zarr":
         store = zarr.NestedDirectoryStore(str(source_file))
         root = zarr.group(store=store)
+        # Extract the correct resolution level
         data = root[str(resolution_level)]
+        # Extract the scale metadata
         scale = root.attrs["multiscales"][0]["datasets"][resolution_level][
             "coordinateTransformations"
         ][0]["scale"][1:]
+        # Swap the axes to match the expected order from CZYX to ZCYX
         adjusted_array = da.swapaxes(data, 0, 1)
 
         imwrite(
@@ -254,6 +340,22 @@ def write_tiff(
 def get_slice_attributes(
     xml_path: Path, tile_names: List[str]
 ) -> Dict[str, Dict]:
+    """
+    Get the slice attributes from a Big Data Viewer XML file. Attributes
+    include the illumination id, channel id, and tile id, and angle id.
+
+    Parameters
+    ----------
+    xml_path: Path
+        The path to the XML file.
+    tile_names: List[str]
+        The names of the tiles.
+
+    Returns
+    -------
+    Dict[str, Dict]
+        A dictionary containing the slice attributes for each tile.
+    """
     tree = ET.parse(xml_path)
     root = tree.getroot()
     view_setups = root.findall(".//ViewSetup//attributes")
@@ -269,7 +371,29 @@ def get_slice_attributes(
     return slice_attributes
 
 
-def get_big_stitcher_transforms(xml_path, x_size, y_size, z_size):
+def get_big_stitcher_transforms(
+    xml_path: Path, x_size: int, y_size: int, z_size: int
+) -> List[List[int]]:
+    """
+    Get the translations for each tile from a Big Data Viewer XML file.
+    The translations are calculated by BigStitcher.
+
+    Parameters
+    ----------
+    xml_path: Path
+        The path to the Big Data Viewer XML file.
+    x_size: int
+        The size of the image in the x-dimension.
+    y_size: int
+        The size of the image in the y-dimension.
+    z_size: int
+        The size of the image in the z-dimension.
+
+    Returns
+    -------
+    List[List[int]]
+        A list of translations for each tile.
+    """
     tree = ET.parse(xml_path)
     root = tree.getroot()
     stitch_transforms = root.findall(
