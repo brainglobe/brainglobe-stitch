@@ -84,7 +84,7 @@ def create_pyramid_bdv_h5(
 
 def parse_mesospim_metadata(
     meta_file_name: Path,
-) -> List[Dict[str, Union[str, int, float]]]:
+) -> List[Dict]:
     """
     Parse the metadata from a mesoSPIM .h5_meta.txt file.
 
@@ -95,7 +95,7 @@ def parse_mesospim_metadata(
 
     Returns
     -------
-    List[Dict[str, Union[str, int, float]]
+    List[Dict]
         A list of dictionaries containing the metadata for each tile.
     """
     tile_metadata = []
