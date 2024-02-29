@@ -241,6 +241,9 @@ class StitchingWidget(QWidget):
         worker.finished.connect(self.progress_bar.reset)
         worker.start()
 
+        self.create_pyramid_button.setEnabled(False)
+        self.add_tiles_button.setEnabled(True)
+
     def _on_add_tiles_button_clicked(self):
         # Need to run in a separate worker thread
         self.image_mosaic = load(self.working_directory)
@@ -324,6 +327,12 @@ class StitchingWidget(QWidget):
         return
 
     def check_and_load_mesospim_directory(self):
+        """
+        Check if the selected directory is a valid mesoSPIM directory,
+        if valid load the h5 file and check if the resolution pyramid
+        is present. If not present, enable the create pyramid button.
+        Otherwise, enable the add tiles button.
+        """
         try:
             (
                 self.xml_path,
@@ -334,8 +343,8 @@ class StitchingWidget(QWidget):
                 if len(f["t00000/s00"].keys()) <= 1:
                     show_warning("Resolution pyramid not found")
                     self.create_pyramid_button.setEnabled(True)
-
-            self.add_tiles_button.setEnabled(True)
+                else:
+                    self.add_tiles_button.setEnabled(True)
         except FileNotFoundError:
             show_warning("mesoSPIM directory not valid")
 
