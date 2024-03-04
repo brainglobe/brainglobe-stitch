@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 import dask.array as da
 import h5py
 import napari.layers
+import numpy.typing as npt
 from brainglobe_utils.qtpy.logo import header_widget
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
@@ -39,6 +40,32 @@ from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.tile import Tile
 
 
+def add_tiles_from_mosaic(
+    napari_data: List[Tuple[da.Array, npt.NDArray]], image_mosaic: ImageMosaic
+):
+    """
+    Add tiles to the napari viewer from the ImageMosaic.
+
+    Parameters
+    ----------
+    napari_data: List[Tuple[da.Array, npt.NDArray]]
+        The data and position for each tile in the mosaic.
+    """
+
+    for data, tile_name in zip(napari_data, image_mosaic.tile_names):
+        tile_data, tile_position = data
+        tile_layer = napari.layers.Image(
+            tile_data.compute(),
+            name=tile_name,
+            blending="translucent",
+            contrast_limits=[0, 4000],
+            multiscale=False,
+        )
+        tile_layer.translate = tile_position
+
+        yield tile_layer
+
+
 class StitchingWidget(QWidget):
     def __init__(self, napari_viewer: Viewer):
         super().__init__()
@@ -60,7 +87,7 @@ class StitchingWidget(QWidget):
         self.tile_metadata: List[Dict] = []
         self.num_channels: int = 1
         self.original_image_shape: Tuple[int, int, int] | None = None
-        self.resolution_to_display: int = 2
+        self.resolution_to_display: int = 3
 
         self.setLayout(QVBoxLayout())
 
@@ -204,6 +231,7 @@ class StitchingWidget(QWidget):
                 self, "Select mesoSPIM directory", str(self.default_directory)
             )
         )
+        # Add the text to the mesospim directory text field
         self.mesospim_directory_text_field.setText(str(self.working_directory))
         self.check_and_load_mesospim_directory()
 
@@ -216,7 +244,7 @@ class StitchingWidget(QWidget):
     def _on_open_file_dialog_imagej_clicked(self):
         self.imagej_path = Path(
             QFileDialog.getOpenFileName(
-                self, "Select ImageJ Path", str(self.default_directory)
+                self, "Select FIJI Path", str(self.default_directory)
             )[0]
         )
         self.imagej_path_text_field.setText(str(self.imagej_path))
@@ -253,7 +281,15 @@ class StitchingWidget(QWidget):
             self.resolution_to_display
         )
 
-        self.add_tiles_from_mosaic(napari_data)
+        worker = create_worker(
+            add_tiles_from_mosaic, napari_data, self.image_mosaic
+        )
+        worker.yielded.connect(self._set_tile_layers)
+        worker.start()
+
+    def _set_tile_layers(self, tile_layer: napari.layers.Image):
+        tile_layer = self._viewer.add_layer(tile_layer)
+        self.tile_layers.append(tile_layer)
 
     def _on_stitch_button_clicked(self):
         stitch(
@@ -347,27 +383,28 @@ class StitchingWidget(QWidget):
             show_warning("mesoSPIM directory not valid")
 
     def check_imagej_path(self):
+        """
+        Check if the selected ImageJ path is valid. If valid, enable the
+        stitch button. Otherwise, show a warning.
+        """
         if self.imagej_path.exists():
             self.stitch_button.setEnabled(True)
         else:
             show_warning("ImageJ path not valid")
 
-    def add_tiles_from_mosaic(self, napari_data):
-        for data, tile_name in zip(napari_data, self.image_mosaic.tile_names):
-            tile_data, tile_position = data
-            tile_layer = self._viewer.add_image(
-                tile_data,
-                blending="translucent",
-                contrast_limits=[0, 4000],
-                multiscale=False,
-                name=tile_name,
-            )
+    def update_tiles_from_mosaic(
+        self, napari_data: List[Tuple[da.Array, npt.NDArray]]
+    ):
+        """
+        Update the data stored in the napari viewer for each tile based on
+        the ImageMosaic.
 
-            self.tile_layers.append(tile_layer)
-            tile_layer.translate = tile_position
-
-    def update_tiles_from_mosaic(self, napari_data):
+        Parameters
+        ----------
+        napari_data: List[Tuple[da.Array, npt.NDArray]]
+            The data and position for each tile in the mosaic.
+        """
         for data, tile_layer in zip(napari_data, self.tile_layers):
             tile_data, tile_position = data
-            tile_layer.data = tile_data
+            tile_layer.data = tile_data.compute()
             tile_layer.translate = tile_position
