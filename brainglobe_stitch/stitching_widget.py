@@ -64,9 +64,7 @@ class StitchingWidget(QWidget):
 
         self.setLayout(QVBoxLayout())
 
-        self.header = header_widget(
-            "BrainGlobe_Stitcher", "Stitching", "stitching.html"
-        )
+        self.header = header_widget("BrainGlobe Stitch", "", "stitching.html")
 
         self.default_directory = Path.home()
         self.working_directory = self.default_directory

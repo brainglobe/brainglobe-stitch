@@ -396,12 +396,16 @@ def get_big_stitcher_transforms(
     """
     tree = ET.parse(xml_path)
     root = tree.getroot()
+
     stitch_transforms = root.findall(
         ".//ViewTransform/[Name='Stitching Transform']/affine"
     )
     assert (
         stitch_transforms is not None
     ), "No stitching transforms found in XML file"
+
+    # Stitching Transforms are if aligning to grid is done manually
+    # Translation from Tile Configuration is if aligned automatically
     grid_transforms = root.findall(
         ".//ViewTransform/[Name='Translation from Tile Configuration']/affine"
     )
@@ -410,6 +414,7 @@ def get_big_stitcher_transforms(
             ".//ViewTransform/[Name='Translation to Regular Grid']/affine"
         )
     assert grid_transforms is not None, "No grid transforms found in XML file"
+
     z_scale_str = root.find(".//ViewTransform/[Name='calibration']/affine")
     assert z_scale_str is not None, "No z scale found in XML file"
     assert z_scale_str.text is not None, "No z scale found in XML file"
@@ -443,12 +448,17 @@ def get_big_stitcher_transforms(
         deltas.append(curr_delta)
         grids.append(curr_grid)
 
+    # Calculate the minimum value for the grid transform for each dimension
     min_grid = [min([grid[i] for grid in grids]) for i in range(3)]
+    # Normalise the grid transforms by subtracting the minimum value
     grids = [[grid[i] - min_grid[i] for i in range(3)] for grid in grids]
+    # Calculate the maximum delta (from BigStitcher) for each dimension
     max_delta = [max([abs(delta[i]) for delta in deltas]) for i in range(3)]
 
     translations = []
 
+    # Calculate the start and end coordinates for each tile such that the
+    # first tile is at 0,0,0
     for i in range(len(deltas)):
         curr_delta = deltas[i]
         curr_grid = grids[i]
