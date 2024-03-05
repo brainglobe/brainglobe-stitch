@@ -28,7 +28,7 @@ def create_pyramid_bdv_h5(
     ----------
     input_file: Path
         The path to the input HDF5 file.
-    yield_progress:
+    yield_progress: bool, optional
         Whether to yield progress.
     """
     resolutions_array = np.array(
