@@ -24,6 +24,37 @@ def generate_tile_data():
     return image_pyramid, resolution_array
 
 
+@pytest.fixture
+def generate_overlap(generate_tile_data):
+    tile_i = Tile(
+        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
+    )
+    tile_j = Tile(
+        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
+    )
+
+    # Set the position such that there is an overlap of size [246, 26, 251]
+    tile_i.position = np.array([10, 0, 10])
+    tile_j.position = np.array([0, 230, 15])
+
+    tile_i.data_pyramid, tile_i.resolution_pyramid = generate_tile_data
+    tile_j.data_pyramid, tile_j.resolution_pyramid = generate_tile_data
+
+    overlap_coordinates = np.array(
+        [max(tile_i.position[i], tile_j.position[i]) for i in range(3)]
+    )
+
+    overlap_size = (
+        tile_i.data_pyramid[0].shape
+        - overlap_coordinates
+        + np.array(
+            [min(tile_i.position[i], tile_j.position[i]) for i in range(3)]
+        )
+    )
+
+    return Overlap(overlap_coordinates, overlap_size, tile_i, tile_j)
+
+
 def test_tile_init():
     tile_id = 0
     attribute_tile_id = 0
@@ -52,27 +83,10 @@ def test_tile_init():
     assert tile.angle == angle
 
 
-def test_overlap_init(generate_tile_data):
-    tile_i = Tile(
-        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
-    )
-    tile_j = Tile(
-        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
-    )
+def test_overlap_init(generate_overlap):
+    overlap = generate_overlap
 
-    # Set the position such that there is an overlap of size [246, 26, 251]
-    tile_i.position = np.array([10, 0, 10])
-    tile_j.position = np.array([0, 230, 15])
-
-    tile_i.data_pyramid, tile_i.resolution_pyramid = generate_tile_data
-    tile_j.data_pyramid, tile_j.resolution_pyramid = generate_tile_data
-
-    overlap_coordinates = np.array(
-        [max(tile_i.position[i], tile_j.position[i]) for i in range(3)]
-    )
-    overlap_size = np.array([246, 26, 251])
-
-    overlap = Overlap(overlap_coordinates, overlap_size, tile_i, tile_j)
+    tile_j = overlap.tiles[1]
 
     assert overlap.coordinates.shape == (3,)
     assert overlap.size[0].shape == (3,)
@@ -80,91 +94,31 @@ def test_overlap_init(generate_tile_data):
     assert len(overlap.local_coordinates) == len(tile_j.resolution_pyramid)
 
 
-def test_get_local_coordinates(generate_tile_data):
-    tile_i = Tile(
-        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
-    )
-    tile_j = Tile(
-        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
-    )
+def test_get_local_coordinates(generate_overlap):
+    overlap = generate_overlap
+    tile_i, tile_j = overlap.tiles
 
-    # Set the position such that there is an overlap of size [246, 26, 251]
-    tile_i.position = np.array([10, 0, 10])
-    tile_j.position = np.array([0, 230, 15])
-
-    tile_i.data_pyramid, tile_i.resolution_pyramid = generate_tile_data
-    tile_j.data_pyramid, tile_j.resolution_pyramid = generate_tile_data
-
-    overlap_coordinates = np.array(
-        [max(tile_i.position[i], tile_j.position[i]) for i in range(3)]
-    )
-
-    overlap_size = (
-        tile_i.data_pyramid[0].shape
-        - overlap_coordinates
-        + np.array(
-            [min(tile_i.position[i], tile_j.position[i]) for i in range(3)]
-        )
-    )
-
-    overlap = Overlap(overlap_coordinates, overlap_size, tile_i, tile_j)
-
-    expected_i_position = overlap_coordinates - tile_i.position
-    expected_j_position = overlap_coordinates - tile_j.position
+    expected_i_position = overlap.coordinates - tile_i.position
+    expected_j_position = overlap.coordinates - tile_j.position
 
     assert (overlap.local_coordinates[0][0] == expected_i_position).all()
     assert (overlap.local_coordinates[0][1] == expected_j_position).all()
 
 
-def test_extract_tile_overlaps(generate_tile_data):
-    tile_i = Tile(
-        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
-    )
-    tile_j = Tile(
-        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
-    )
+def test_extract_tile_overlaps(generate_overlap):
+    overlap = generate_overlap
 
-    # Set the position such that there is an overlap of size [246, 26, 251]
-    tile_i.position = np.array([10, 0, 10])
-    tile_j.position = np.array([0, 230, 15])
+    local_coord = overlap.local_coordinates[0]
 
-    tile_i.data_pyramid, tile_i.resolution_pyramid = generate_tile_data
-    tile_j.data_pyramid, tile_j.resolution_pyramid = generate_tile_data
+    overlaps = overlap.extract_tile_overlaps(0)
 
-    overlap_coordinates = np.array(
-        [max(tile_i.position[i], tile_j.position[i]) for i in range(3)]
-    )
-
-    overlap_size = (
-        tile_i.data_pyramid[0].shape
-        - overlap_coordinates
-        + np.array(
-            [min(tile_i.position[i], tile_j.position[i]) for i in range(3)]
-        )
-    )
-
-    overlap = Overlap(overlap_coordinates, overlap_size, tile_i, tile_j)
-
-    i_local = overlap.local_coordinates[0][0]
-    j_local = overlap.local_coordinates[0][1]
-
-    i_overlap, j_overlap = overlap.extract_tile_overlaps(0)
-
-    assert i_overlap.shape == tuple(overlap_size)
-    assert j_overlap.shape == tuple(overlap_size)
-    assert (
-        i_overlap
-        == tile_i.data_pyramid[0][
-            i_local[0] : i_local[0] + overlap_size[0],
-            i_local[1] : i_local[1] + overlap_size[1],
-            i_local[2] : i_local[2] + overlap_size[2],
-        ]
-    ).all()
-    assert (
-        j_overlap
-        == tile_j.data_pyramid[0][
-            j_local[0] : j_local[0] + overlap_size[0],
-            j_local[1] : j_local[1] + overlap_size[1],
-            j_local[2] : j_local[2] + overlap_size[2],
-        ]
-    ).all()
+    for i in range(len(local_coord)):
+        assert overlaps[i].shape == tuple(overlap.size[0])
+        assert (
+            overlaps[i]
+            == overlap.tiles[i].data_pyramid[0][
+                local_coord[i][0] : local_coord[i][0] + overlap.size[0][0],
+                local_coord[i][1] : local_coord[i][1] + overlap.size[0][1],
+                local_coord[i][2] : local_coord[i][2] + overlap.size[0][2],
+            ]
+        ).all()
