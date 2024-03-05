@@ -122,3 +122,34 @@ def test_extract_tile_overlaps(generate_overlap):
                 local_coord[i][2] : local_coord[i][2] + overlap.size[0][2],
             ]
         ).all()
+
+
+def test_replace_overlap_data(generate_overlap):
+    overlap = generate_overlap
+
+    new_data = da.zeros(overlap.size[0], dtype=np.int16)
+    overlap.replace_overlap_data(0, new_data)
+    res_level = 0
+
+    for i in range(len(overlap.tiles)):
+        assert (
+            (
+                overlap.tiles[i].data_pyramid[res_level][
+                    overlap.local_coordinates[res_level][i][
+                        0
+                    ] : overlap.local_coordinates[res_level][i][0]
+                    + overlap.size[res_level][0],
+                    overlap.local_coordinates[res_level][i][
+                        1
+                    ] : overlap.local_coordinates[res_level][i][1]
+                    + overlap.size[res_level][1],
+                    overlap.local_coordinates[res_level][i][
+                        2
+                    ] : overlap.local_coordinates[res_level][i][2]
+                    + overlap.size[res_level][2],
+                ]
+                == 0
+            )
+            .compute()
+            .all()
+        )
