@@ -2,11 +2,13 @@ import shutil
 from pathlib import Path
 
 import h5py
+import numpy as np
 import pytest
 
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
+    get_big_stitcher_transforms,
     get_slice_attributes,
     parse_mesospim_metadata,
 )
@@ -17,6 +19,18 @@ NUM_SLICES = 8
 CHANNELS = ["561 nm", "647 nm"]
 PIXEL_SIZE_XY = 4.08
 PIXEL_SIZE_Z = 5.0
+EXPECTED_TRANSFORMS = np.array(
+    [
+        [37, 165, 62, 190, 51, 161],
+        [0, 128, 195, 323, 38, 148],
+        [37, 165, 62, 190, 51, 161],
+        [0, 128, 195, 323, 38, 148],
+        [171, 299, 104, 232, 102, 212],
+        [133, 261, 239, 367, 88, 198],
+        [171, 299, 104, 232, 102, 212],
+        [133, 261, 239, 367, 88, 198],
+    ]
+)
 
 
 @pytest.fixture(scope="class")
@@ -183,6 +197,8 @@ def test_get_slice_attributes(naive_bdv_directory):
 
     slice_attributes = get_slice_attributes(xml_path, tile_names)
 
+    assert len(slice_attributes) == NUM_SLICES
+
     # The slices are arranged in a 2x2 grid with 2 channels
     # The tiles in the test data are arranged in columns per channel
     # Each column has its own illumination
@@ -197,3 +213,11 @@ def test_get_slice_attributes(naive_bdv_directory):
         )
         assert slice_attributes[tile_names[i]]["illumination"] == str(i // 4)
         assert slice_attributes[tile_names[i]]["angle"] == "0"
+
+
+def test_get_big_stitcher_transforms(naive_bdv_directory):
+    xml_path = naive_bdv_directory / "test_data_bdv.xml"
+
+    transforms = get_big_stitcher_transforms(xml_path, 128, 128, 110)
+
+    assert np.equal(transforms, EXPECTED_TRANSFORMS).all()
