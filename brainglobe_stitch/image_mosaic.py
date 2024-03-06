@@ -119,13 +119,11 @@ class ImageMosaic:
             print("Resolution pyramid not found.")
             # Close the file as it's open as read only
             self.h5_file.close()
-            print("Creating resolution pyramid...")
+            print("Creating resolution pyramid.")
 
             # Create resolution pyramid
             with Progress() as progress:
-                task = progress.add_task(
-                    "Creating resolution pyramid...", total=100
-                )
+                task = progress.add_task("Downsampling...", total=100)
 
                 for update in create_pyramid_bdv_h5(
                     self.h5_path,
@@ -214,6 +212,7 @@ class ImageMosaic:
             The metadata for each tile in the image.
         """
         # Remove .h5_meta.txt from the file name
+        print("Tile positions not found. Writing tile config file.")
         output_file = str(meta_file_name)[:-12] + "_tile_config.txt"
 
         tile_xy_locations = []
