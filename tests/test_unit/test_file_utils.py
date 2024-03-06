@@ -7,6 +7,7 @@ import pytest
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
+    get_slice_attributes,
     parse_mesospim_metadata,
 )
 
@@ -170,3 +171,29 @@ def test_check_mesospim_directory_too_many_files(
         check_mesospim_directory(bad_bdv_directory)
 
         assert error_message in str(e)
+
+
+def test_write_tiff():
+    pass
+
+
+def test_get_slice_attributes(naive_bdv_directory):
+    xml_path = naive_bdv_directory / "test_data_bdv.xml"
+    tile_names = [f"s{i:02}" for i in range(NUM_SLICES)]
+
+    slice_attributes = get_slice_attributes(xml_path, tile_names)
+
+    # The slices are arranged in a 2x2 grid with 2 channels
+    # The tiles in the test data are arranged in columns per channel
+    # Each column has its own illumination
+    # e.g. s00, s01 are channel 0, tile 0 and 1, illumination 0
+    #      s02, s03 are channel 1, tile 0 and 1, illumination 0
+    #      s04, s05 are channel 0, tile 2 and 3, illumination 1
+    #      s06, s07 are channel 1, tile 2 and 3, illumination 1
+    for i in range(NUM_SLICES):
+        assert slice_attributes[tile_names[i]]["channel"] == str((i // 2) % 2)
+        assert slice_attributes[tile_names[i]]["tile"] == str(
+            i % 2 + (i // 4) * 2
+        )
+        assert slice_attributes[tile_names[i]]["illumination"] == str(i // 4)
+        assert slice_attributes[tile_names[i]]["angle"] == "0"

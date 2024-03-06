@@ -309,7 +309,7 @@ def write_tiff(
         The path to the source zarr file.
     output_file: Path
         The path to the output TIFF file.
-    resolution_level: int
+    resolution_level: int, optional
         The resolution level to write to the TIFF file.
     """
     if source_file.suffix == ".zarr":
