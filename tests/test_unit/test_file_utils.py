@@ -4,26 +4,52 @@ from pathlib import Path
 import h5py
 import pytest
 
-from brainglobe_stitch.file_utils import create_pyramid_bdv_h5
+from brainglobe_stitch.file_utils import (
+    check_mesospim_directory,
+    create_pyramid_bdv_h5,
+    parse_mesospim_metadata,
+)
 
 TEMP_DIR = Path("./temp_directory")
 NUM_RESOLUTIONS = 5
 NUM_SLICES = 8
+CHANNELS = ["561 nm", "647 nm"]
+PIXEL_SIZE_XY = 4.08
+PIXEL_SIZE_Z = 5.0
 
 
-@pytest.fixture
-def copy_naive_bdv_directory():
+@pytest.fixture(scope="class")
+def naive_bdv_directory():
     test_dir = Path("./test_directory")
 
-    shutil.copytree(TEMP_DIR, test_dir, dirs_exist_ok=True)
+    shutil.copytree(
+        TEMP_DIR,
+        test_dir,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("*data_bdv.h5"),
+    )
+    # Create UNIX style hidden files that should be ignored
+    (test_dir / ".test_data_original_bdv.h5").touch()
+    (test_dir / ".test_data_bdv.h5_meta.txt").touch()
+    (test_dir / ".test_data_bdv.h5_meta.txt").touch()
 
     yield test_dir
 
     shutil.rmtree(test_dir)
 
 
-def test_create_pyramid_bdv_h5(copy_naive_bdv_directory):
-    h5_path = copy_naive_bdv_directory / "test_data_original_bdv.h5"
+@pytest.fixture
+def bad_bdv_directory():
+    bad_dir = Path("./bad_directory")
+    bad_dir.mkdir()
+
+    yield bad_dir
+
+    shutil.rmtree(bad_dir)
+
+
+def test_create_pyramid_bdv_h5(naive_bdv_directory):
+    h5_path = naive_bdv_directory / "test_data_original_bdv.h5"
     with h5py.File(h5_path, "r") as f:
         num_tiles = len(f["t00000"].keys())
         tile_names = f["t00000"].keys()
@@ -55,3 +81,92 @@ def test_create_pyramid_bdv_h5(copy_naive_bdv_directory):
                 f_out[f"{tile_name}/subdivisions"].shape[0] == NUM_RESOLUTIONS
             )
             assert len(f_out[f"t00000/{tile_name}"].keys()) == NUM_RESOLUTIONS
+
+
+def test_parse_mesospim_metadata(naive_bdv_directory):
+    meta_path = naive_bdv_directory / "test_data_bdv.h5_meta.txt"
+
+    meta_data = parse_mesospim_metadata(meta_path)
+
+    assert len(meta_data) == NUM_SLICES
+    for i in range(NUM_SLICES):
+        assert meta_data[i]["Laser"] == CHANNELS[i % 2]
+        assert meta_data[i]["Pixelsize in um"] == PIXEL_SIZE_XY
+        assert meta_data[i]["z_stepsize"] == PIXEL_SIZE_Z
+
+
+def test_write_bdv_xml():
+    pass
+
+
+def test_check_mesospim_directory(naive_bdv_directory):
+    xml_path, meta_path, h5_path = check_mesospim_directory(
+        naive_bdv_directory
+    )
+
+    assert xml_path == naive_bdv_directory / "test_data_bdv.xml"
+    assert meta_path == naive_bdv_directory / "test_data_bdv.h5_meta.txt"
+    assert h5_path == naive_bdv_directory / "test_data_original_bdv.h5"
+
+
+@pytest.mark.parametrize(
+    "file_names, error_message",
+    [
+        (
+            ["test_data_bdv.xml", "test_data_bdv.h5_meta.txt"],
+            "Expected 1 h5 file, found 0",
+        ),
+        (
+            ["test_data_bdv.xml", "test_data_original_bdv.h5"],
+            "Expected 1 h5_meta.txt file, found 0",
+        ),
+        (
+            ["test_data_bdv.h5_meta.txt", "test_data_original_bdv.h5"],
+            "Expected 1 xml file, found 0",
+        ),
+    ],
+)
+def test_check_mesospim_directory_missing_files(
+    bad_bdv_directory, file_names, error_message
+):
+    for file_name in file_names:
+        Path(bad_bdv_directory / file_name).touch()
+
+    with pytest.raises(FileNotFoundError) as e:
+        check_mesospim_directory(bad_bdv_directory)
+
+        assert error_message in str(e)
+
+
+@pytest.mark.parametrize(
+    "file_names, error_message",
+    [
+        (
+            ["a_bdv.xml", "a_bdv.h5_meta.txt", "a_bdv.h5", "b_bdv.xml"],
+            "Expected 1 xml file, found 2",
+        ),
+        (
+            [
+                "a_bdv.xml",
+                "a_bdv.h5_meta.txt",
+                "a_bdv.h5",
+                "b_bdv.h5_meta.txt",
+            ],
+            "Expected 1 h5_meta.txt file, found 2",
+        ),
+        (
+            ["a_bdv.xml", "a_bdv.h5_meta.txt", "a_bdv.h5", "b_bdv.h5"],
+            "Expected 1 h5 file, found 2",
+        ),
+    ],
+)
+def test_check_mesospim_directory_too_many_files(
+    bad_bdv_directory, file_names, error_message
+):
+    for file_name in file_names:
+        Path(bad_bdv_directory / file_name).touch()
+
+    with pytest.raises(FileNotFoundError) as e:
+        check_mesospim_directory(bad_bdv_directory)
+
+        assert error_message in str(e)
