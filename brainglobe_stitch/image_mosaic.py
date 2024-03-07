@@ -93,6 +93,10 @@ class ImageMosaic:
             self.tiles[0].resolution_pyramid
         )
 
+    def __del__(self):
+        if self.h5_file is not None:
+            self.h5_file.close()
+
     def load_mesospim_directory(self) -> None:
         """
         Load the mesoSPIM directory and its data into the ImageMosaic.
