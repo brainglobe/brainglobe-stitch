@@ -96,6 +96,7 @@ class ImageMosaic:
     def __del__(self):
         if self.h5_file is not None:
             self.h5_file.close()
+            self.h5_file = None
 
     def load_mesospim_directory(self) -> None:
         """

@@ -12,7 +12,7 @@ def image_mosaic(naive_bdv_directory):
 
     yield image_mosaic
 
-    del image_mosaic
+    image_mosaic.__del__()
 
 
 def test_image_mosaic_init(image_mosaic, naive_bdv_directory):
