@@ -17,6 +17,36 @@ EXPECTED_TILE_CONFIG = [
     "07;;(115,115,0)",
 ]
 
+EXPECTED_OVERLAP_COORDINATES = [
+    [3, 120, 2],
+    [6, 7, 118],
+    [5, 123, 116],
+    [6, 120, 118],
+    [5, 123, 116],
+    [3, 120, 2],
+    [6, 7, 118],
+    [5, 123, 116],
+    [6, 120, 118],
+    [5, 123, 116],
+    [6, 123, 118],
+    [6, 123, 118],
+]
+
+EXPECTED_OVERLAP_SIZE = [
+    [109, 12, 126],
+    [107, 125, 12],
+    [108, 9, 14],
+    [106, 15, 10],
+    [107, 125, 12],
+    [109, 12, 126],
+    [107, 125, 12],
+    [108, 9, 14],
+    [106, 15, 10],
+    [107, 125, 12],
+    [109, 12, 126],
+    [109, 12, 126],
+]
+
 
 @pytest.fixture(scope="module")
 def image_mosaic(naive_bdv_directory):
@@ -86,3 +116,13 @@ def test_stitch(mocker, image_mosaic, naive_bdv_directory):
     mock_run_big_stitcher.assert_called_once()
 
     assert len(image_mosaic.overlaps) == 12
+
+    for idx, overlap in enumerate(image_mosaic.overlaps):
+        assert (
+            image_mosaic.overlaps[overlap].coordinates
+            == EXPECTED_OVERLAP_COORDINATES[idx]
+        ).all()
+        assert (
+            image_mosaic.overlaps[overlap].size[0]
+            == EXPECTED_OVERLAP_SIZE[idx]
+        ).all()
