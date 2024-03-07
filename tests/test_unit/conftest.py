@@ -6,7 +6,7 @@ import pytest
 TEMP_DIR = Path("./temp_directory")
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def naive_bdv_directory():
     test_dir = Path("./test_directory")
 
@@ -14,10 +14,9 @@ def naive_bdv_directory():
         TEMP_DIR,
         test_dir,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("*data_bdv.h5"),
     )
     # Create UNIX style hidden files that should be ignored
-    (test_dir / ".test_data_original_bdv.h5").touch()
+    (test_dir / ".test_data_bdv.h5").touch()
     (test_dir / ".test_data_bdv.h5_meta.txt").touch()
     (test_dir / ".test_data_bdv.h5_meta.txt").touch()
 

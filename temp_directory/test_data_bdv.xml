@@ -195,7 +195,7 @@
     <ViewRegistration timepoint="0" setup="1">
       <ViewTransform type="affine">
         <Name>Stitching Transform</Name>
-        <affine>1.0 0.0 0.0 -37.31191303042033 0.0 1.0 0.0 17.996597829088387 0.0 0.0 1.0 -16.398582251606967</affine>
+        <affine>1.0 0.0 0.0 -2.331994564 0.0 1.0 0.0 1.124787364 0.0 0.0 1.0 -1.024911391</affine>
       </ViewTransform>
       <ViewTransform type="affine">
         <Name>Translation from Tile Configuration</Name>
@@ -223,7 +223,7 @@
     <ViewRegistration timepoint="0" setup="3">
       <ViewTransform type="affine">
         <Name>Stitching Transform</Name>
-        <affine>1.0 0.0 0.0 -37.31191303042033 0.0 1.0 0.0 17.996597829088387 0.0 0.0 1.0 -16.398582251606967</affine>
+        <affine>1.0 0.0 0.0 -2.331994564 0.0 1.0 0.0 1.124787364 0.0 0.0 1.0 -1.024911391</affine>
       </ViewTransform>
       <ViewTransform type="affine">
         <Name>Translation from Tile Configuration</Name>
@@ -237,7 +237,7 @@
     <ViewRegistration timepoint="0" setup="4">
       <ViewTransform type="affine">
         <Name>Stitching Transform</Name>
-        <affine>1.0 0.0 0.0 18.84851750435155 0.0 1.0 0.0 42.30989494233745 0.0 0.0 1.0 62.69360042520702</affine>
+        <affine>1.0 0.0 0.0 1.178032344 0.0 1.0 0.0 2.644368434 0.0 0.0 1.0 3.918350027</affine>
       </ViewTransform>
       <ViewTransform type="affine">
         <Name>Translation from Tile Configuration</Name>
@@ -251,7 +251,7 @@
     <ViewRegistration timepoint="0" setup="5">
       <ViewTransform type="affine">
         <Name>Stitching Transform</Name>
-        <affine>1.0 0.0 0.0 -18.922518206876703 0.0 1.0 0.0 61.82416085602017 0.0 0.0 1.0 44.97531750647818</affine>
+        <affine>1.0 0.0 0.0 -1.182657388 0.0 1.0 0.0 3.864010054 0.0 0.0 1.0 2.810957344</affine>
       </ViewTransform>
       <ViewTransform type="affine">
         <Name>Translation from Tile Configuration</Name>
@@ -265,7 +265,7 @@
     <ViewRegistration timepoint="0" setup="6">
       <ViewTransform type="affine">
         <Name>Stitching Transform</Name>
-        <affine>1.0 0.0 0.0 18.84851750435155 0.0 1.0 0.0 42.30989494233745 0.0 0.0 1.0 62.69360042520702</affine>
+        <affine>1.0 0.0 0.0 1.178032344 0.0 1.0 0.0 2.644368434 0.0 0.0 1.0 3.918350027</affine>
       </ViewTransform>
       <ViewTransform type="affine">
         <Name>Translation from Tile Configuration</Name>
@@ -279,7 +279,7 @@
     <ViewRegistration timepoint="0" setup="7">
       <ViewTransform type="affine">
         <Name>Stitching Transform</Name>
-        <affine>1.0 0.0 0.0 -18.922518206876703 0.0 1.0 0.0 61.82416085602017 0.0 0.0 1.0 44.97531750647818</affine>
+        <affine>1.0 0.0 0.0 -1.182657388 0.0 1.0 0.0 3.864010054 0.0 0.0 1.0 2.810957344</affine>
       </ViewTransform>
       <ViewTransform type="affine">
         <Name>Translation from Tile Configuration</Name>
