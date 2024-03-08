@@ -15,7 +15,7 @@ from brainglobe_stitch.file_utils import (
 
 TEMP_DIR = Path("./temp_directory")
 NUM_RESOLUTIONS = 5
-NUM_SLICES = 8
+NUM_TILES = 8
 CHANNELS = ["561 nm", "647 nm"]
 PIXEL_SIZE_XY = 4.08
 PIXEL_SIZE_Z = 5.0
@@ -83,8 +83,8 @@ def test_parse_mesospim_metadata(naive_bdv_directory):
 
     meta_data = parse_mesospim_metadata(meta_path)
 
-    assert len(meta_data) == NUM_SLICES
-    for i in range(NUM_SLICES):
+    assert len(meta_data) == NUM_TILES
+    for i in range(NUM_TILES):
         assert meta_data[i]["Laser"] == CHANNELS[i % 2]
         assert meta_data[i]["Pixelsize in um"] == PIXEL_SIZE_XY
         assert meta_data[i]["z_stepsize"] == PIXEL_SIZE_Z
@@ -173,11 +173,11 @@ def test_write_tiff():
 
 def test_get_slice_attributes(naive_bdv_directory):
     xml_path = naive_bdv_directory / "test_data_bdv.xml"
-    tile_names = [f"s{i:02}" for i in range(NUM_SLICES)]
+    tile_names = [f"s{i:02}" for i in range(NUM_TILES)]
 
     slice_attributes = get_slice_attributes(xml_path, tile_names)
 
-    assert len(slice_attributes) == NUM_SLICES
+    assert len(slice_attributes) == NUM_TILES
 
     # The slices are arranged in a 2x2 grid with 2 channels
     # The tiles in the test data are arranged in columns per channel
@@ -186,7 +186,7 @@ def test_get_slice_attributes(naive_bdv_directory):
     #      s02, s03 are channel 1, tile 0 and 1, illumination 0
     #      s04, s05 are channel 0, tile 2 and 3, illumination 1
     #      s06, s07 are channel 1, tile 2 and 3, illumination 1
-    for i in range(NUM_SLICES):
+    for i in range(NUM_TILES):
         assert slice_attributes[tile_names[i]]["channel"] == str((i // 2) % 2)
         assert slice_attributes[tile_names[i]]["tile"] == str(
             i % 2 + (i // 4) * 2

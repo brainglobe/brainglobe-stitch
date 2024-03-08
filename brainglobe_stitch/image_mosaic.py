@@ -427,13 +427,14 @@ class ImageMosaic:
             return
 
         if self.scale_factors is None:
-            # Calculate scale factors on at least the second resolution level
+            # Calculate scale factors on at least resolution level 2
             # The tiles are adjusted as the scale factors are calculated
             self.calculate_intensity_scale_factors(
-                resolution_level, percentile
+                max(resolution_level, 2), percentile
             )
 
-            return
+            if self.intensity_adjusted[resolution_level]:
+                return
 
         assert self.scale_factors is not None
 

@@ -5,18 +5,22 @@ import pytest
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
+NUM_TILES = 8
+NUM_RESOLUTIONS = 5
+NUM_CHANNELS = 2
+NUM_OVERLAPS = 12
+TILE_SIZE = (107, 128, 128)
 EXPECTED_TILE_CONFIG = [
     "dim=3",
     "00;;(0,0,0)",
     "01;;(0,115,0)",
-    "02;;(0,0,0)",
-    "03;;(0,115,0)",
-    "04;;(115,0,0)",
-    "05;;(115,115,0)",
-    "06;;(115,0,0)",
-    "07;;(115,115,0)",
+    "04;;(0,0,0)",
+    "05;;(0,115,0)",
+    "10;;(115,0,0)",
+    "11;;(115,115,0)",
+    "14;;(115,0,0)",
+    "15;;(115,115,0)",
 ]
-
 EXPECTED_OVERLAP_COORDINATES = [
     [3, 120, 2],
     [6, 7, 118],
@@ -31,20 +35,29 @@ EXPECTED_OVERLAP_COORDINATES = [
     [6, 123, 118],
     [6, 123, 118],
 ]
-
 EXPECTED_OVERLAP_SIZE = [
-    [109, 12, 126],
-    [107, 125, 12],
-    [108, 9, 14],
-    [106, 15, 10],
-    [107, 125, 12],
-    [109, 12, 126],
-    [107, 125, 12],
-    [108, 9, 14],
-    [106, 15, 10],
-    [107, 125, 12],
-    [109, 12, 126],
-    [109, 12, 126],
+    [106, 12, 126],
+    [104, 125, 12],
+    [105, 9, 14],
+    [103, 15, 10],
+    [104, 125, 12],
+    [106, 12, 126],
+    [104, 125, 12],
+    [105, 9, 14],
+    [103, 15, 10],
+    [104, 125, 12],
+    [106, 12, 126],
+    [106, 12, 126],
+]
+EXPECTED_TILE_POSITIONS = [
+    [3, 4, 2],
+    [2, 120, 0],
+    [3, 4, 2],
+    [2, 120, 0],
+    [6, 7, 118],
+    [5, 123, 116],
+    [6, 7, 118],
+    [5, 123, 116],
 ]
 
 
@@ -71,14 +84,14 @@ def test_image_mosaic_init(image_mosaic, naive_bdv_directory):
         == naive_bdv_directory / "test_data_bdv.h5_meta.txt"
     )
     assert image_mosaic.h5_file is not None
-    assert len(image_mosaic.channel_names) == 2
-    assert len(image_mosaic.tiles) == 8
-    assert len(image_mosaic.tile_names) == 8
+    assert len(image_mosaic.channel_names) == NUM_CHANNELS
+    assert len(image_mosaic.tiles) == NUM_TILES
+    assert len(image_mosaic.tile_names) == NUM_TILES
     assert image_mosaic.x_y_resolution == 4.08
     assert image_mosaic.z_resolution == 5.0
-    assert image_mosaic.num_channels == 2
-    assert len(image_mosaic.intensity_adjusted) == 5
-    assert len(image_mosaic.overlaps_interpolated) == 5
+    assert image_mosaic.num_channels == NUM_CHANNELS
+    assert len(image_mosaic.intensity_adjusted) == NUM_RESOLUTIONS
+    assert len(image_mosaic.overlaps_interpolated) == NUM_RESOLUTIONS
 
 
 def test_write_big_stitcher_tile_config(image_mosaic, naive_bdv_directory):
@@ -115,7 +128,7 @@ def test_stitch(mocker, image_mosaic, naive_bdv_directory):
 
     mock_run_big_stitcher.assert_called_once()
 
-    assert len(image_mosaic.overlaps) == 12
+    assert len(image_mosaic.overlaps) == NUM_OVERLAPS
 
     for idx, overlap in enumerate(image_mosaic.overlaps):
         assert (
@@ -126,3 +139,19 @@ def test_stitch(mocker, image_mosaic, naive_bdv_directory):
             image_mosaic.overlaps[overlap].size[0]
             == EXPECTED_OVERLAP_SIZE[idx]
         ).all()
+
+
+def test_data_for_napari(image_mosaic):
+    data = image_mosaic.data_for_napari(0)
+
+    assert len(data) == NUM_TILES
+
+    for i in range(NUM_TILES):
+        assert data[i][0].shape == TILE_SIZE
+        assert (data[i][1] == EXPECTED_TILE_POSITIONS[i]).all()
+
+
+def test_normalise_intensity(image_mosaic):
+    image_mosaic.normalise_intensity(2)
+
+    assert image_mosaic.intensity_adjusted[2]
