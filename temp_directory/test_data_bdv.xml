@@ -9,7 +9,7 @@
       <ViewSetup>
         <id>0</id>
         <name>setup 0</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -24,7 +24,7 @@
       <ViewSetup>
         <id>1</id>
         <name>setup 1</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -39,7 +39,7 @@
       <ViewSetup>
         <id>2</id>
         <name>setup 2</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -54,7 +54,7 @@
       <ViewSetup>
         <id>3</id>
         <name>setup 3</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -69,7 +69,7 @@
       <ViewSetup>
         <id>4</id>
         <name>setup 4</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -84,7 +84,7 @@
       <ViewSetup>
         <id>5</id>
         <name>setup 5</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -99,7 +99,7 @@
       <ViewSetup>
         <id>6</id>
         <name>setup 6</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
@@ -114,7 +114,7 @@
       <ViewSetup>
         <id>7</id>
         <name>setup 7</name>
-        <size>128 128 110</size>
+        <size>128 128 107</size>
         <voxelSize>
           <unit>um</unit>
           <size>4.08 4.08 5.0</size>
