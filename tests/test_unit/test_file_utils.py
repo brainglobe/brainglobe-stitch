@@ -15,20 +15,20 @@ from brainglobe_stitch.file_utils import (
 
 TEMP_DIR = Path("./temp_directory")
 NUM_RESOLUTIONS = 5
-NUM_SLICES = 8
+NUM_TILES = 8
 CHANNELS = ["561 nm", "647 nm"]
 PIXEL_SIZE_XY = 4.08
 PIXEL_SIZE_Z = 5.0
 EXPECTED_TRANSFORMS = np.array(
     [
-        [37, 165, 62, 190, 51, 161],
-        [0, 128, 195, 323, 38, 148],
-        [37, 165, 62, 190, 51, 161],
-        [0, 128, 195, 323, 38, 148],
-        [171, 299, 104, 232, 102, 212],
-        [133, 261, 239, 367, 88, 198],
-        [171, 299, 104, 232, 102, 212],
-        [133, 261, 239, 367, 88, 198],
+        [2, 130, 4, 132, 3, 113],
+        [0, 128, 120, 248, 2, 112],
+        [2, 130, 4, 132, 3, 113],
+        [0, 128, 120, 248, 2, 112],
+        [118, 246, 7, 135, 6, 116],
+        [116, 244, 123, 251, 5, 115],
+        [118, 246, 7, 135, 6, 116],
+        [116, 244, 123, 251, 5, 115],
     ]
 )
 
@@ -44,7 +44,7 @@ def bad_bdv_directory():
 
 
 def test_create_pyramid_bdv_h5(naive_bdv_directory):
-    h5_path = naive_bdv_directory / "test_data_original_bdv.h5"
+    h5_path = naive_bdv_directory / "test_data_bdv.h5"
     with h5py.File(h5_path, "r") as f:
         num_tiles = len(f["t00000"].keys())
         tile_names = f["t00000"].keys()
@@ -60,7 +60,7 @@ def test_create_pyramid_bdv_h5(naive_bdv_directory):
         num_done += 1
 
     with h5py.File(h5_path, "r") as f_out, h5py.File(
-        TEMP_DIR / "test_data_original_bdv.h5", "r"
+        TEMP_DIR / "test_data_bdv.h5", "r"
     ) as f_in:
         # Check that the number of groups/datasets in the parent is unchanged
         assert len(f_out.keys()) == len(f_in.keys())
@@ -83,8 +83,8 @@ def test_parse_mesospim_metadata(naive_bdv_directory):
 
     meta_data = parse_mesospim_metadata(meta_path)
 
-    assert len(meta_data) == NUM_SLICES
-    for i in range(NUM_SLICES):
+    assert len(meta_data) == NUM_TILES
+    for i in range(NUM_TILES):
         assert meta_data[i]["Laser"] == CHANNELS[i % 2]
         assert meta_data[i]["Pixelsize in um"] == PIXEL_SIZE_XY
         assert meta_data[i]["z_stepsize"] == PIXEL_SIZE_Z
@@ -101,7 +101,7 @@ def test_check_mesospim_directory(naive_bdv_directory):
 
     assert xml_path == naive_bdv_directory / "test_data_bdv.xml"
     assert meta_path == naive_bdv_directory / "test_data_bdv.h5_meta.txt"
-    assert h5_path == naive_bdv_directory / "test_data_original_bdv.h5"
+    assert h5_path == naive_bdv_directory / "test_data_bdv.h5"
 
 
 @pytest.mark.parametrize(
@@ -112,11 +112,11 @@ def test_check_mesospim_directory(naive_bdv_directory):
             "Expected 1 h5 file, found 0",
         ),
         (
-            ["test_data_bdv.xml", "test_data_original_bdv.h5"],
+            ["test_data_bdv.xml", "test_data_bdv.h5"],
             "Expected 1 h5_meta.txt file, found 0",
         ),
         (
-            ["test_data_bdv.h5_meta.txt", "test_data_original_bdv.h5"],
+            ["test_data_bdv.h5_meta.txt", "test_data_bdv.h5"],
             "Expected 1 xml file, found 0",
         ),
     ],
@@ -173,11 +173,11 @@ def test_write_tiff():
 
 def test_get_slice_attributes(naive_bdv_directory):
     xml_path = naive_bdv_directory / "test_data_bdv.xml"
-    tile_names = [f"s{i:02}" for i in range(NUM_SLICES)]
+    tile_names = [f"s{i:02}" for i in range(NUM_TILES)]
 
     slice_attributes = get_slice_attributes(xml_path, tile_names)
 
-    assert len(slice_attributes) == NUM_SLICES
+    assert len(slice_attributes) == NUM_TILES
 
     # The slices are arranged in a 2x2 grid with 2 channels
     # The tiles in the test data are arranged in columns per channel
@@ -186,7 +186,7 @@ def test_get_slice_attributes(naive_bdv_directory):
     #      s02, s03 are channel 1, tile 0 and 1, illumination 0
     #      s04, s05 are channel 0, tile 2 and 3, illumination 1
     #      s06, s07 are channel 1, tile 2 and 3, illumination 1
-    for i in range(NUM_SLICES):
+    for i in range(NUM_TILES):
         assert slice_attributes[tile_names[i]]["channel"] == str((i // 2) % 2)
         assert slice_attributes[tile_names[i]]["tile"] == str(
             i % 2 + (i // 4) * 2

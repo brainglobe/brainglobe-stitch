@@ -78,6 +78,7 @@ class ImageMosaic:
         self.channel_names: List[str] = []
         self.tiles: List[Tile] = []
         self.tile_names: List[str] = []
+        self.tile_metadata: List[Dict] = []
         self.overlaps: Dict[Tuple[int, int], Overlap] = {}
         self.x_y_resolution: float = 4.0  # um per pixel
         self.z_resolution: float = 5.0  # um per pixel
@@ -92,6 +93,11 @@ class ImageMosaic:
         self.overlaps_interpolated: List[bool] = [False] * len(
             self.tiles[0].resolution_pyramid
         )
+
+    def __del__(self):
+        if self.h5_file is not None:
+            self.h5_file.close()
+            self.h5_file = None
 
     def load_mesospim_directory(self) -> None:
         """
@@ -138,16 +144,16 @@ class ImageMosaic:
             str(self.xml_path)[:-4] + "_tile_config.txt"
         )
 
-        tile_metadata = parse_mesospim_metadata(self.meta_path)
+        self.tile_metadata = parse_mesospim_metadata(self.meta_path)
 
         self.channel_names = []
         idx = 0
-        while tile_metadata[idx]["Laser"] not in self.channel_names:
-            self.channel_names.append(tile_metadata[idx]["Laser"])
+        while self.tile_metadata[idx]["Laser"] not in self.channel_names:
+            self.channel_names.append(self.tile_metadata[idx]["Laser"])
             idx += 1
 
-        self.x_y_resolution = tile_metadata[0]["Pixelsize in um"]
-        self.z_resolution = tile_metadata[0]["z_stepsize"]
+        self.x_y_resolution = self.tile_metadata[0]["Pixelsize in um"]
+        self.z_resolution = self.tile_metadata[0]["z_stepsize"]
         self.num_channels = len(self.channel_names)
 
         # Each tile is a group under "t00000"
@@ -180,7 +186,7 @@ class ImageMosaic:
         # Need to read in stage coordinates if not writing the tile config
         # These will be used as the initial tile positions
         if not self.tile_config_path.exists():
-            self.write_big_stitcher_tile_config(self.meta_path, tile_metadata)
+            self.write_big_stitcher_tile_config(self.meta_path)
         else:
             with open(self.tile_config_path, "r") as f:
                 # Skip header
@@ -197,9 +203,7 @@ class ImageMosaic:
                     ]
                     tile.position = translation
 
-    def write_big_stitcher_tile_config(
-        self, meta_file_name: Path, tile_metadata: List[Dict]
-    ) -> None:
+    def write_big_stitcher_tile_config(self, meta_file_name: Path) -> None:
         """
         Write the BigStitcher tile configuration file
         (placement for each tile based on stage coordinates).
@@ -208,8 +212,6 @@ class ImageMosaic:
         ----------
         meta_file_name: Path
             The path to the mesoSPIM metadata file.
-        tile_metadata: List[Dict]
-            The metadata for each tile in the image.
         """
         # Remove .h5_meta.txt from the file name
         print("Tile positions not found. Writing tile config file.")
@@ -217,7 +219,7 @@ class ImageMosaic:
 
         tile_xy_locations = []
         for i in range(0, len(self.tiles), self.num_channels):
-            curr_tile_dict = tile_metadata[i]
+            curr_tile_dict = self.tile_metadata[i]
 
             # Get the x and y positions in pixels
             x = round(
@@ -425,13 +427,14 @@ class ImageMosaic:
             return
 
         if self.scale_factors is None:
-            # Calculate scale factors on at least the second resolution level
+            # Calculate scale factors on at least resolution level 2
             # The tiles are adjusted as the scale factors are calculated
             self.calculate_intensity_scale_factors(
-                resolution_level, percentile
+                max(resolution_level, 2), percentile
             )
 
-            return
+            if self.intensity_adjusted[resolution_level]:
+                return
 
         assert self.scale_factors is not None
 
