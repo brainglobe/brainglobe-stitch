@@ -368,6 +368,26 @@ class ImageMosaic:
 
         return data
 
+    def reload_resolution_pyramid_level(self, resolution_level: int) -> None:
+        """
+        Reload the data for a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to reload the data for.
+        """
+        if self.h5_file:
+            for tile in self.tiles:
+                tile.data_pyramid[resolution_level] = da.from_array(
+                    self.h5_file[
+                        f"t00000/{tile.name}/{resolution_level}/cells"
+                    ]
+                )
+
+            self.intensity_adjusted[resolution_level] = False
+            self.overlaps_interpolated[resolution_level] = False
+
     def calculate_overlaps(self) -> None:
         """
         Calculate the overlaps between the tiles in the ImageMosaic.
@@ -462,10 +482,6 @@ class ImageMosaic:
         percentile: int
             The percentile based on which the normalisation is done.
         """
-        if self.intensity_adjusted[resolution_level]:
-            print("Intensity already adjusted at this resolution scale.")
-            return self.scale_factors
-
         num_tiles = len(self.tiles)
         scale_factors = np.ones((num_tiles, num_tiles))
 

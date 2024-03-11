@@ -406,5 +406,5 @@ class StitchingWidget(QWidget):
         """
         for data, tile_layer in zip(napari_data, self.tile_layers):
             tile_data, tile_position = data
-            tile_layer.tile_name = tile_data.compute()
+            tile_layer.data = tile_data
             tile_layer.translate = tile_position

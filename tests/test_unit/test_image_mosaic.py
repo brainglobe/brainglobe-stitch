@@ -59,6 +59,16 @@ EXPECTED_TILE_POSITIONS = [
     [6, 7, 118],
     [5, 123, 116],
 ]
+EXPECTED_INTENSITY_FACTORS = [
+    1.0,
+    0.9883720930232558,
+    1.0,
+    1.0545454545454545,
+    0.5801054460122512,
+    0.5267319002511789,
+    1.074100378787879,
+    1.083113545682018,
+]
 
 
 @pytest.fixture(scope="module")
@@ -151,7 +161,96 @@ def test_data_for_napari(image_mosaic):
         assert (data[i][1] == EXPECTED_TILE_POSITIONS[i]).all()
 
 
-def test_normalise_intensity(image_mosaic):
-    image_mosaic.normalise_intensity(2)
+@pytest.mark.parametrize(
+    "resolution_level",
+    [0, 1],
+)
+def test_normalise_intensity(mocker, image_mosaic, resolution_level):
+    def force_set_scale_factors(*args, **kwargs):
+        image_mosaic.scale_factors = EXPECTED_INTENSITY_FACTORS
+        image_mosaic.intensity_adjusted[args[0]] = True
 
-    assert image_mosaic.intensity_adjusted[2]
+    mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.calculate_intensity_scale_factors",
+        side_effect=force_set_scale_factors,
+    )
+
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    assert not image_mosaic.intensity_adjusted[resolution_level]
+    image_mosaic.scale_factors = None
+
+    image_mosaic.normalise_intensity(resolution_level)
+    assert image_mosaic.intensity_adjusted[resolution_level]
+    assert len(image_mosaic.scale_factors) == NUM_TILES
+
+    for i in range(NUM_TILES):
+        if EXPECTED_INTENSITY_FACTORS[i] != 1.0:
+            assert (
+                len(
+                    image_mosaic.tiles[i]
+                    .data_pyramid[resolution_level]
+                    .dask.layers
+                )
+                == 4
+            )
+
+
+@pytest.mark.parametrize(
+    "resolution_level",
+    [2, 3, 4],
+)
+def test_normalise_intensity_done_with_factors(
+    mocker, image_mosaic, resolution_level
+):
+    def force_set_scale_factors(*args, **kwargs):
+        image_mosaic.scale_factors = EXPECTED_INTENSITY_FACTORS
+        image_mosaic.intensity_adjusted[args[0]] = True
+
+    mock_calc_intensity_factors = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.calculate_intensity_scale_factors",
+        side_effect=force_set_scale_factors,
+    )
+
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    assert not image_mosaic.intensity_adjusted[resolution_level]
+    image_mosaic.scale_factors = None
+
+    image_mosaic.normalise_intensity(resolution_level)
+    assert image_mosaic.intensity_adjusted[resolution_level]
+    assert len(image_mosaic.scale_factors) == NUM_TILES
+
+    mock_calc_intensity_factors.called_once_with(resolution_level, 50)
+
+    for i in range(NUM_TILES):
+        assert (
+            len(
+                image_mosaic.tiles[i]
+                .data_pyramid[resolution_level]
+                .dask.layers
+            )
+            == 2
+        )
+
+
+@pytest.mark.parametrize(
+    "resolution_level",
+    [0, 1, 2, 3, 4],
+)
+def test_normalise_intensity_already_adjusted(image_mosaic, resolution_level):
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.intensity_adjusted[resolution_level] = True
+    image_mosaic.normalise_intensity(resolution_level)
+
+    assert image_mosaic.intensity_adjusted[resolution_level]
+
+    # Check that no scale adjustment calculations are queued for the tiles
+    # at the specified resolution level
+    for i in range(NUM_TILES):
+        assert (
+            len(
+                image_mosaic.tiles[i]
+                .data_pyramid[resolution_level]
+                .dask.layers
+            )
+            == 2
+        )
