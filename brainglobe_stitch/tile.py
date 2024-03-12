@@ -206,3 +206,69 @@ class Overlap:
             scaled_coordinates[1][2] : scaled_coordinates[1][2]
             + scaled_size[2],
         ] = new_data
+
+    def linear_interpolation(
+        self, resolution_level: int, tile_shape: Tuple[int, ...]
+    ):
+        # Extract overlapping data from both tiles
+        i_overlap, j_overlap = self.extract_tile_overlaps(resolution_level)
+
+        x_overlap_size = self.size[resolution_level][2]
+        y_overlap_size = self.size[resolution_level][1]
+
+        z_size, y_size, x_size = tile_shape
+        tile_i, tile_j = self.tiles
+
+        if x_overlap_size / x_size < 0.4 and y_overlap_size / y_size < 0.4:
+            # Skip the small diagonal overlaps
+            return
+        elif x_overlap_size / x_size < 0.4:
+            # The thin overlap is in the x dimension
+            x_lin = np.linspace(1, 0, x_overlap_size)
+
+            # 1 in the first column,
+            # linearly decreasing to 0 in the last column
+            yx_grid = np.tile(x_lin, (y_overlap_size, 1))
+
+            # The decreasing image is the one for which the overlap
+            # is at the end of the x dimension
+            if tile_i.position[2] < tile_j.position[2]:
+                decreasing_image = i_overlap
+                increasing_image = j_overlap
+            else:
+                decreasing_image = j_overlap
+                increasing_image = i_overlap
+        else:
+            # The thin overlap is in the y dimension
+            y_lin = np.linspace(1, 0, y_overlap_size)
+
+            # 1 in the first row,
+            # linearly decreasing to 0 in the last row
+            yx_grid = np.tile(y_lin, (x_overlap_size, 1)).T
+
+            # The decreasing image is the one for which the overlap
+            # is at the end of the y dimension
+            if tile_i.position[1] < tile_j.position[1]:
+                decreasing_image = i_overlap
+                increasing_image = j_overlap
+            else:
+                decreasing_image = j_overlap
+                increasing_image = i_overlap
+
+        interp = (
+            np.multiply(
+                decreasing_image.compute(),
+                yx_grid,
+                dtype=np.float16,
+            )
+            + np.multiply(
+                increasing_image.compute(),
+                1 - yx_grid,
+                dtype=np.float16,
+            )
+        ).astype(np.int16)
+
+        # Replace the overlap data with the interpolated data
+        # Allows future interpolation to be done on the
+        # interpolated data
+        self.replace_overlap_data(resolution_level, interp)
