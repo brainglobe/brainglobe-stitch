@@ -404,6 +404,7 @@ class ImageMosaic:
 
         for tile_i in self.tiles[:-1]:
             position_i = tile_i.position
+            tile_i.neighbours = []
             for tile_j in self.tiles[tile_i.id + 1 :]:
                 position_j = tile_j.position
 
