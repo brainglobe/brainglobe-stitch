@@ -273,11 +273,29 @@ def test_calculate_intensity_scale_factors(image_mosaic):
 
 
 @pytest.mark.parametrize("resolution_level", [0, 1, 2, 3])
-def test_interpolate_overlaps(image_mosaic, resolution_level):
+def test_interpolate_overlaps(image_mosaic, resolution_level, mocker):
     image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    mock_linear_interpolation = mocker.patch(
+        "brainglobe_stitch.tile.Overlap.linear_interpolation",
+    )
+
     image_mosaic.interpolate_overlaps(resolution_level)
 
     assert image_mosaic.overlaps_interpolated[resolution_level]
+    assert mock_linear_interpolation.call_count == NUM_OVERLAPS
+
+
+def test_interpolate_overlaps_already_done(image_mosaic, mocker):
+    resolution_level = 2
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.overlaps_interpolated[resolution_level] = True
+    mock_linear_interpolation = mocker.patch(
+        "brainglobe_stitch.tile.Overlap.linear_interpolation",
+    )
+    image_mosaic.interpolate_overlaps(resolution_level)
+
+    assert image_mosaic.overlaps_interpolated[resolution_level]
+    mock_linear_interpolation.assert_not_called()
 
 
 @pytest.mark.parametrize(
