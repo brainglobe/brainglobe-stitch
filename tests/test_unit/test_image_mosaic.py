@@ -1,6 +1,8 @@
 import os
+import shutil
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
@@ -254,3 +256,51 @@ def test_normalise_intensity_already_adjusted(image_mosaic, resolution_level):
             )
             == 2
         )
+
+
+def test_calculate_intensity_scale_factors(image_mosaic):
+    resolution_level = 2
+    percentile = 50
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.scale_factors = None
+
+    image_mosaic.calculate_intensity_scale_factors(
+        resolution_level, percentile
+    )
+
+    assert len(image_mosaic.scale_factors) == NUM_TILES
+    assert np.allclose(image_mosaic.scale_factors, EXPECTED_INTENSITY_FACTORS)
+
+
+def test_interpolate_overlaps(image_mosaic):
+    resolution_level = 0
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+
+    temp_test_directory = Path("./temp_test_directory")
+    shutil.copytree(
+        Path("./temp_directory"),
+        temp_test_directory,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("*_data_bdv.h5"),
+    )
+
+    interpolated_mosaic = ImageMosaic(temp_test_directory)
+
+    image_mosaic.interpolate_overlaps(resolution_level)
+
+    assert image_mosaic.overlaps_interpolated[resolution_level]
+
+    for overlap in image_mosaic.overlaps:
+        overlap_i, overlap_j = image_mosaic.overlaps[
+            overlap
+        ].extract_tile_overlaps(resolution_level)
+        inter_overlap_i, inter_overlap_j = interpolated_mosaic.overlaps[
+            overlap
+        ].extract_tile_overlaps(resolution_level)
+
+        assert np.allclose(overlap_i, inter_overlap_i)
+        assert np.allclose(overlap_j, inter_overlap_j)
+
+    interpolated_mosaic.__del__()
+
+    shutil.rmtree(temp_test_directory)

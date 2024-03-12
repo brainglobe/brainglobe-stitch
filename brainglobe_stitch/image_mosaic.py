@@ -202,6 +202,12 @@ class ImageMosaic:
                         int(split_line[0]),
                     ]
                     tile.position = translation
+        try:
+            self.read_big_stitcher_transforms()
+        except AssertionError:
+            print("BigStitcher transforms not found.")
+
+        self.calculate_overlaps()
 
     def write_big_stitcher_tile_config(self, meta_file_name: Path) -> None:
         """
@@ -323,12 +329,15 @@ class ImageMosaic:
         # Need to find a better way to do this
         sleep(1)
 
-        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        self.read_big_stitcher_transforms()
 
+        self.calculate_overlaps()
+
+    def read_big_stitcher_transforms(self):
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         stitcher_translations = get_big_stitcher_transforms(
             self.xml_path, z_size, y_size, x_size
         )
-
         for tile in self.tiles:
             # BigStitcher uses x,y,z order, switch to z,y,x order
             stitched_position = [
@@ -337,8 +346,6 @@ class ImageMosaic:
                 stitcher_translations[tile.id][0],
             ]
             tile.position = stitched_position
-
-        self.calculate_overlaps()
 
     def data_for_napari(
         self, resolution_level: int = 0

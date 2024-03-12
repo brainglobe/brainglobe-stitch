@@ -14,6 +14,7 @@ def naive_bdv_directory():
         TEMP_DIR,
         test_dir,
         dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("*_interpolated_bdv.h5"),
     )
     # Create UNIX style hidden files that should be ignored
     (test_dir / ".test_data_bdv.h5").touch()
