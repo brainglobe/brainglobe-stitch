@@ -11,6 +11,7 @@ NUM_RESOLUTIONS = 5
 NUM_CHANNELS = 2
 NUM_OVERLAPS = 12
 TILE_SIZE = (107, 128, 128)
+EXPECTED_FUSED_IMAGE_SHAPE = (113, 251, 246)
 EXPECTED_TILE_CONFIG = [
     "dim=3",
     "00;;(0,0,0)",
@@ -271,9 +272,72 @@ def test_calculate_intensity_scale_factors(image_mosaic):
     assert np.allclose(image_mosaic.scale_factors, EXPECTED_INTENSITY_FACTORS)
 
 
-def test_interpolate_overlaps(image_mosaic):
-    resolution_level = 0
+@pytest.mark.parametrize("resolution_level", [0, 1, 2, 3])
+def test_interpolate_overlaps(image_mosaic, resolution_level):
     image_mosaic.reload_resolution_pyramid_level(resolution_level)
     image_mosaic.interpolate_overlaps(resolution_level)
 
     assert image_mosaic.overlaps_interpolated[resolution_level]
+
+
+@pytest.mark.parametrize(
+    "output_file_name, normalise_intensity, interpolate, fuse_function_name",
+    [
+        ("fused.zarr", False, False, "_fuse_to_zarr"),
+        ("fused.zarr", True, False, "_fuse_to_zarr"),
+        ("fused.zarr", False, True, "_fuse_to_zarr"),
+        ("fused.zarr", True, True, "_fuse_to_zarr"),
+        ("fused.h5", False, False, "_fuse_to_bdv_h5"),
+        ("fused.h5", True, False, "_fuse_to_bdv_h5"),
+        ("fused.h5", False, True, "_fuse_to_bdv_h5"),
+        ("fused.h5", True, True, "_fuse_to_bdv_h5"),
+    ],
+)
+def test_fuse(
+    image_mosaic,
+    mocker,
+    output_file_name,
+    normalise_intensity,
+    interpolate,
+    fuse_function_name,
+):
+    image_mosaic.reload_resolution_pyramid_level(0)
+
+    mock_fuse_function = mocker.patch(
+        f"brainglobe_stitch.image_mosaic.ImageMosaic.{fuse_function_name}",
+    )
+    mock_normalise_intensity = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.normalise_intensity",
+    )
+    mock_interpolate_overlaps = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.interpolate_overlaps",
+    )
+
+    image_mosaic.fuse(output_file_name, normalise_intensity, interpolate)
+
+    mock_fuse_function.assert_called_once_with(
+        image_mosaic.xml_path.parent / output_file_name,
+        EXPECTED_FUSED_IMAGE_SHAPE,
+    )
+
+    if normalise_intensity:
+        mock_normalise_intensity.assert_called_once_with(0, 80)
+    else:
+        mock_normalise_intensity.assert_not_called()
+
+    if interpolate:
+        mock_interpolate_overlaps.assert_called_once_with(0)
+    else:
+        mock_interpolate_overlaps.assert_not_called()
+
+
+def test_fuse_to_zarr():
+    pass
+
+
+def test_fuse_to_bdv_h5():
+    pass
+
+
+def test_get_metadata_for_zarr():
+    pass
