@@ -594,7 +594,10 @@ class ImageMosaic:
             self._fuse_to_bdv_h5(output_path, fused_image_shape)
 
     def _fuse_to_zarr(
-        self, output_path: Path, fused_image_shape: Tuple[int, ...]
+        self,
+        output_path: Path,
+        fused_image_shape: Tuple[int, ...],
+        pyramid_depth: int = 6,
     ) -> None:
         """
         Fuse the tiles in the ImageMosaic into a single image and save it as a
@@ -613,7 +616,7 @@ class ImageMosaic:
         chunk_shape: Tuple[int, ...] = (256, 256, 256)
 
         transformation_metadata, axes_metadata = self.get_metadata_for_zarr(
-            pyramid_depth=6
+            pyramid_depth=pyramid_depth
         )
 
         if self.num_channels > 1:
@@ -846,7 +849,7 @@ class ImageMosaic:
         output_file.close()
 
     def get_metadata_for_zarr(
-        self, pyramid_depth: int = 5
+        self, pyramid_depth: int = 6
     ) -> Tuple[List[List[Dict]], List[Dict]]:
         """
         Prepare the metadata for a zarr file.

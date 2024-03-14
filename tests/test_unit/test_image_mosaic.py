@@ -349,13 +349,49 @@ def test_fuse(
         mock_interpolate_overlaps.assert_not_called()
 
 
-def test_fuse_to_zarr():
-    pass
+@pytest.mark.parametrize(
+    "pyramid_depth, num_channels",
+    [(1, 1), (1, 2), (1, 5), (2, 1), (2, 2), (2, 5), (3, 1), (3, 2), (3, 5)],
+)
+def test_get_metadata_for_zarr(image_mosaic, pyramid_depth, num_channels):
+    temp_num_channels = image_mosaic.num_channels
+    image_mosaic.num_channels = num_channels
+
+    metadata, axes = image_mosaic.get_metadata_for_zarr(pyramid_depth)
+
+    if num_channels > 1:
+        assert len(axes) == 4
+        assert axes[0]["name"] == "c"
+        assert axes[0]["type"] == "channel"
+        axes.pop(0)
+    else:
+        assert len(axes) == 3
+
+    expected_axes_names = ["z", "y", "x"]
+
+    for idx, axes in enumerate(axes):
+        assert axes["name"] == expected_axes_names[idx]
+        assert axes["type"] == "space"
+        assert axes["unit"] == "micrometer"
+
+    for idx, transformation in enumerate(metadata):
+        assert transformation[0]["type"] == "scale"
+        expected_scale = [
+            image_mosaic.z_resolution,
+            image_mosaic.x_y_resolution * 2**idx,
+            image_mosaic.x_y_resolution * 2**idx,
+        ]
+        if num_channels > 1:
+            expected_scale.insert(0, 1)
+
+        assert transformation[0]["scale"] == expected_scale
+
+    image_mosaic.num_channels = temp_num_channels
+
+
+def test_fuse_to_zarr(image_mosaic):
+    image_mosaic.xml_path.parent / "fused.zarr"
 
 
 def test_fuse_to_bdv_h5():
-    pass
-
-
-def test_get_metadata_for_zarr():
     pass
