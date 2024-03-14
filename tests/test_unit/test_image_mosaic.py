@@ -432,5 +432,14 @@ def test_fuse_to_zarr(image_mosaic):
     assert (np.array(root["0"]) == test_image).all()
 
 
-def test_fuse_to_bdv_h5():
-    pass
+def test_fuse_to_bdv_h5(image_mosaic):
+    pyramid_depth = 3
+    image_mosaic.reload_resolution_pyramid_level(0)
+
+    output_file = image_mosaic.xml_path.parent / "fused.h5"
+    fused_image_shape = EXPECTED_FUSED_IMAGE_SHAPE
+
+    image_mosaic._fuse_to_bdv_h5(output_file, fused_image_shape, pyramid_depth)
+
+    assert output_file.exists()
+    assert output_file.with_suffix(".xml").exists()

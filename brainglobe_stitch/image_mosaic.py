@@ -726,7 +726,10 @@ class ImageMosaic:
         root.attrs["omero"] = {"channels": channels}
 
     def _fuse_to_bdv_h5(
-        self, output_path: Path, fused_image_shape: Tuple[int, ...]
+        self,
+        output_path: Path,
+        fused_image_shape: Tuple[int, ...],
+        pyramid_depth: int = 6,
     ) -> None:
         """
         Fuse the tiles in the ImageMosaic into a single image and save it as a
@@ -743,21 +746,14 @@ class ImageMosaic:
         output_file = h5py.File(output_path, mode="w")
 
         # Everything is in x, y, z order for Big Data Viewer
-        subdivisions = np.array(
-            [
-                [32, 32, 16],
-                [32, 32, 16],
-                [32, 32, 16],
-                [32, 32, 16],
-                [32, 32, 16],
-            ],
-            dtype=np.int16,
-        )
+        subdivision = np.array([32, 32, 16], dtype=np.int16)
+        subdivisions = np.tile(subdivision, (pyramid_depth, 1))
+
         # Only downsampling in the x and y dimensions
-        resolutions = np.array(
-            [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]],
-            dtype=np.int16,
-        )
+        resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
+
+        for i in range(1, pyramid_depth):
+            resolutions[i, :-1] = 2**i
 
         channel_ds_list: List[List[h5py.Dataset]] = []
         for i in range(self.num_channels):
@@ -776,6 +772,10 @@ class ImageMosaic:
             )
 
             chunk_shape: Tuple[int, ...] = (256, 256, 256)
+
+            if (np.array(fused_image_shape) < 256).any():
+                chunk_shape = fused_image_shape
+
             # Create the datasets for each resolution level
             ds_list: List[h5py.Dataset] = []
             ds = output_file.require_dataset(
@@ -799,7 +799,7 @@ class ImageMosaic:
                 down_ds = output_file.require_dataset(
                     f"t00000/s{i:02}/{j}/cells",
                     shape=new_shape,
-                    chunks=(256, 256, 256),
+                    chunks=chunk_shape,
                     dtype="i2",
                 )
 
