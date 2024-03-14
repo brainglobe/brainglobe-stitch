@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import zarr
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
@@ -390,7 +391,45 @@ def test_get_metadata_for_zarr(image_mosaic, pyramid_depth, num_channels):
 
 
 def test_fuse_to_zarr(image_mosaic):
-    image_mosaic.xml_path.parent / "fused.zarr"
+    pyramid_depth = 3
+    image_mosaic.reload_resolution_pyramid_level(0)
+
+    output_file = image_mosaic.xml_path.parent / "fused.zarr"
+    fused_image_shape = EXPECTED_FUSED_IMAGE_SHAPE
+
+    image_mosaic._fuse_to_zarr(output_file, fused_image_shape, pyramid_depth)
+
+    assert output_file.exists()
+    test_store = zarr.NestedDirectoryStore(str(output_file))
+    root = zarr.group(store=test_store)
+
+    assert root.attrs["multiscales"] is not None
+    assert root.attrs["multiscales"][0]["axes"] is not None
+    assert len(root.attrs["multiscales"][0]["datasets"]) == pyramid_depth
+    assert root.attrs["omero"] is not None
+    assert len(root.attrs["omero"]["channels"]) == image_mosaic.num_channels
+
+    downsample_shape = [image_mosaic.num_channels, *fused_image_shape]
+    assert root["0"].shape == tuple(downsample_shape)
+
+    for i in range(1, pyramid_depth):
+        downsample_shape[-2:] = [(x + 1) // 2 for x in downsample_shape[-2:]]
+        assert root[str(i)].shape == tuple(downsample_shape)
+
+    test_image = np.zeros(
+        (image_mosaic.num_channels, *fused_image_shape), dtype=np.int16
+    )
+    z_size, y_size, x_size = TILE_SIZE
+
+    for tile in image_mosaic.tiles[-1::-1]:
+        test_image[
+            tile.channel_id,
+            tile.position[0] : tile.position[0] + z_size,
+            tile.position[1] : tile.position[1] + y_size,
+            tile.position[2] : tile.position[2] + x_size,
+        ] = tile.data_pyramid[0].compute()
+
+    assert (np.array(root["0"]) == test_image).all()
 
 
 def test_fuse_to_bdv_h5():
