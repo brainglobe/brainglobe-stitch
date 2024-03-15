@@ -745,7 +745,7 @@ class ImageMosaic:
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         output_file = h5py.File(output_path, mode="w")
 
-        # Everything is in x, y, z order for Big Data Viewer
+        # Metadata is in x, y, z order for Big Data Viewer
         subdivision = np.array([32, 32, 16], dtype=np.int16)
         subdivisions = np.tile(subdivision, (pyramid_depth, 1))
 

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pytest
 import zarr
@@ -443,3 +444,41 @@ def test_fuse_to_bdv_h5(image_mosaic):
 
     assert output_file.exists()
     assert output_file.with_suffix(".xml").exists()
+
+    test_image = np.zeros(
+        (image_mosaic.num_channels, *fused_image_shape), dtype=np.int16
+    )
+    z_size, y_size, x_size = TILE_SIZE
+
+    for tile in image_mosaic.tiles[-1::-1]:
+        test_image[
+            tile.channel_id,
+            tile.position[0] : tile.position[0] + z_size,
+            tile.position[1] : tile.position[1] + y_size,
+            tile.position[2] : tile.position[2] + x_size,
+        ] = tile.data_pyramid[0].compute()
+
+    expected_resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
+    expected_subdivisions = np.tile(
+        np.array([32, 32, 16], dtype=np.int16), (pyramid_depth, 1)
+    )
+
+    for i in range(1, pyramid_depth):
+        expected_resolutions[i, :-1] = 2**i
+
+    with h5py.File(output_file, "r") as f:
+        assert len(f["t00000"].keys()) == image_mosaic.num_channels
+        # Extra group accounts for the t00000 group
+        assert len(f.keys()) == image_mosaic.num_channels + 1
+
+        for idx, tile_name in enumerate(f["t00000"].keys()):
+            assert (
+                f[f"{tile_name}/resolutions"] == expected_resolutions
+            ).all()
+            assert (
+                f[f"{tile_name}/subdivisions"] == expected_subdivisions
+            ).all()
+            assert len(f[f"t00000/{tile_name}"].keys()) == pyramid_depth
+            assert (
+                f[f"t00000/{tile_name}/0/cells"] == test_image[idx, :, :, :]
+            ).all()
