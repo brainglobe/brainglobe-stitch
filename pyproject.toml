@@ -51,6 +51,7 @@ dev = [
   "pytest-cov",
   "pytest-mock",
   "pytest-qt",
+  "pyqt5",
   "coverage",
   "tox",
   "black",
