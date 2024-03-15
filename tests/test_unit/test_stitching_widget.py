@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import dask.array as da
 import napari.layers
 import numpy as np
@@ -30,3 +32,24 @@ def test_stitching_widget_init(make_napari_viewer_proxy):
     stitching_widget = StitchingWidget(viewer)
 
     assert stitching_widget._viewer == viewer
+    assert stitching_widget.image_mosaic is None
+    assert stitching_widget.imagej_path is None
+    assert len(stitching_widget.tile_layers) == 0
+    assert stitching_widget.resolution_to_display == 3
+
+
+def test_on_open_file_dialog_clicked(make_napari_viewer_proxy, mocker):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+    test_dir = str(Path.home() / "test_dir")
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getExistingDirectory",
+        return_value=test_dir,
+    )
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.StitchingWidget.check_and_load_mesospim_directory",
+    )
+
+    stitching_widget._on_open_file_dialog_clicked()
+
+    assert stitching_widget.mesospim_directory_text_field.text() == test_dir
