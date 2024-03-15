@@ -37,6 +37,11 @@ jobs:
           python-version: "3.10"
 
     steps:
+      # these libraries enable testing on Qt on linux
+      - uses: pyvista/setup-headless-display-action@v2
+        with:
+          qt: true
+
       # Run tests
       - uses: neuroinformatics-unit/actions/test@v2
         with:
