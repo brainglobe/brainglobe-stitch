@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import dask.array as da
 import h5py
@@ -37,11 +37,10 @@ from brainglobe_stitch.file_utils import (
     create_pyramid_bdv_h5,
 )
 from brainglobe_stitch.image_mosaic import ImageMosaic
-from brainglobe_stitch.tile import Tile
 
 
 def add_tiles_from_mosaic(
-    napari_data: List[Tuple[da.Array, npt.NDArray]], image_mosaic: ImageMosaic
+    napari_data: List[Tuple[da.Array, npt.NDArray]], tile_names: List[str]
 ):
     """
     Add tiles to the napari viewer from the ImageMosaic.
@@ -50,9 +49,11 @@ def add_tiles_from_mosaic(
     ----------
     napari_data: List[Tuple[da.Array, npt.NDArray]]
         The data and position for each tile in the mosaic.
+    tile_names: List[str]
+        The list of tile names.
     """
 
-    for data, tile_name in zip(napari_data, image_mosaic.tile_names):
+    for data, tile_name in zip(napari_data, tile_names):
         tile_data, tile_position = data
         tile_layer = napari.layers.Image(
             tile_data.compute(),
@@ -72,21 +73,8 @@ class StitchingWidget(QWidget):
         self.progress_bar = QProgressBar(self)
         self._viewer = napari_viewer
         self.image_mosaic: ImageMosaic | None = None
-        self.xml_path: Path | None = None
-        self.meta_path: Path | None = None
-        self.h5_path: Path | None = None
-        self.tile_config_path: Path | None = None
         self.imagej_path: Path | None = None
-        self.h5_file: h5py.File | None = None
-        self.slice_attributes: Dict[str, Dict] = {}
-        self.intensity_scale_factors: List[float] = []
-        self.tile_objects: List[Tile] = []
-        self.tiles: List[da] = []
         self.tile_layers: List[napari.layers.Image] = []
-        self.tile_names: List[str] = []
-        self.tile_metadata: List[Dict] = []
-        self.num_channels: int = 1
-        self.original_image_shape: Tuple[int, int, int] | None = None
         self.resolution_to_display: int = 3
 
         self.setLayout(QVBoxLayout())
@@ -282,7 +270,7 @@ class StitchingWidget(QWidget):
         )
 
         worker = create_worker(
-            add_tiles_from_mosaic, napari_data, self.image_mosaic
+            add_tiles_from_mosaic, napari_data, self.image_mosaic.tile_names
         )
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
