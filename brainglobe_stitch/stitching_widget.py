@@ -233,7 +233,7 @@ class StitchingWidget(QWidget):
         self.imagej_path = Path(
             QFileDialog.getOpenFileName(
                 self, "Select FIJI Path", str(self.default_directory)
-            )[0]
+            )
         )
         self.imagej_path_text_field.setText(str(self.imagej_path))
         self.check_imagej_path()
