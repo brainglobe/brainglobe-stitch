@@ -317,6 +317,24 @@ def test_check_and_load_mesospim_directory(
     assert stitching_widget.add_tiles_button.isEnabled()
 
 
+def test_check_and_load_mesospim_directory_no_pyramid(
+    make_napari_viewer_proxy, bdv_directory_function_level, mocker
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+    stitching_widget.working_directory = bdv_directory_function_level
+
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning"
+    )
+
+    stitching_widget.check_and_load_mesospim_directory()
+
+    mock_show_warning.assert_called_once_with("Resolution pyramid not found")
+    assert not stitching_widget.add_tiles_button.isEnabled()
+    assert stitching_widget.create_pyramid_button.isEnabled()
+
+
 @pytest.mark.parametrize(
     "file_to_remove",
     ["test_data_bdv.h5", "test_data_bdv.xml", "test_data_bdv.h5_meta.txt"],
