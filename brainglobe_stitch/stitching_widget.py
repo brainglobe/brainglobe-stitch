@@ -259,7 +259,6 @@ class StitchingWidget(QWidget):
         self.add_tiles_button.setEnabled(True)
 
     def _on_add_tiles_button_clicked(self):
-        # Need to run in a separate worker thread
         self.image_mosaic = load(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
@@ -297,8 +296,6 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(True)
         self.interpolate_button.setEnabled(True)
 
-        return
-
     def _on_adjust_intensity_button_clicked(self):
         normalise_intensity(
             self.image_mosaic,
@@ -312,8 +309,6 @@ class StitchingWidget(QWidget):
 
         self.update_tiles_from_mosaic(data_for_napari)
 
-        return
-
     def _on_interpolation_button_clicked(self):
         interpolate_overlaps(self.image_mosaic, self.resolution_to_display)
 
@@ -322,8 +317,6 @@ class StitchingWidget(QWidget):
         )
 
         self.update_tiles_from_mosaic(data_for_napari)
-
-        return
 
     def _on_fuse_button_clicked(self):
         if not self.output_file_name_field.text():
@@ -342,11 +335,9 @@ class StitchingWidget(QWidget):
         fuse(
             self.image_mosaic,
             self.output_file_name_field.text(),
-            self.normalise_intensity_toggle.isChecked(),
-            self.interpolate_toggle.isChecked(),
+            normalise_intensity=self.normalise_intensity_toggle.isChecked(),
+            interpolate=self.interpolate_toggle.isChecked(),
         )
-
-        return
 
     def check_and_load_mesospim_directory(self):
         """

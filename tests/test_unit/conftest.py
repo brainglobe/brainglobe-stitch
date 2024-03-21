@@ -24,3 +24,19 @@ def naive_bdv_directory():
     yield test_dir
 
     shutil.rmtree(test_dir)
+
+
+@pytest.fixture
+def bdv_directory_function_level():
+    test_dir = Path("./quick_test_directory")
+
+    shutil.copytree(
+        TEMP_DIR,
+        test_dir,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("*_interpolated_bdv.h5"),
+    )
+
+    yield test_dir
+
+    shutil.rmtree(test_dir)
