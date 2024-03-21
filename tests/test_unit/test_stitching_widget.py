@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import brainglobe_stitch.file_utils
-from brainglobe_stitch.core import load
+from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.stitching_widget import (
     StitchingWidget,
     add_tiles_from_mosaic,
@@ -80,7 +80,7 @@ def test_on_open_file_dialog_imagej_clicked(make_napari_viewer_proxy, mocker):
     imagej_dir = str(Path.home() / "imageJ")
     mocker.patch(
         "brainglobe_stitch.stitching_widget.QFileDialog.getOpenFileName",
-        return_value=imagej_dir,
+        return_value=(imagej_dir, ""),
     )
     mocker.patch(
         "brainglobe_stitch.stitching_widget.StitchingWidget.check_imagej_path",
@@ -169,10 +169,10 @@ def test_on_stitch_button_clicked(
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
-    stitching_widget.image_mosaic = load(naive_bdv_directory)
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
 
     mock_stitch_function = mocker.patch(
-        "brainglobe_stitch.stitching_widget.stitch",
+        "brainglobe_stitch.stitching_widget.ImageMosaic.stitch",
         autospec=True,
     )
 
@@ -195,10 +195,10 @@ def test_on_adjust_intensity_button_clicked(
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
-    stitching_widget.image_mosaic = load(naive_bdv_directory)
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
 
     mock_normalise_intensity = mocker.patch(
-        "brainglobe_stitch.stitching_widget.normalise_intensity",
+        "brainglobe_stitch.stitching_widget.ImageMosaic.normalise_intensity",
         autospec=True,
     )
 
@@ -217,10 +217,10 @@ def test_on_interpolation_button_clicked(
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
-    stitching_widget.image_mosaic = load(naive_bdv_directory)
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
 
     mock_interpolate_overlaps = mocker.patch(
-        "brainglobe_stitch.stitching_widget.interpolate_overlaps",
+        "brainglobe_stitch.stitching_widget.ImageMosaic.interpolate_overlaps",
         autospec=True,
     )
 
@@ -239,10 +239,10 @@ def test_on_fuse_button_clicked(
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
-    stitching_widget.image_mosaic = load(naive_bdv_directory)
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
 
     mock_fuse = mocker.patch(
-        "brainglobe_stitch.stitching_widget.fuse",
+        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
         autospec=True,
     )
 
@@ -264,7 +264,7 @@ def test_on_fuse_button_clicked_no_file_name(
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
-    stitching_widget.image_mosaic = load(naive_bdv_directory)
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
     error_message = "Output file name not specified"
 
     mock_show_warning = mocker.patch(
@@ -283,7 +283,7 @@ def test_on_fuse_button_clicked_wrong_suffix(
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
-    stitching_widget.image_mosaic = load(naive_bdv_directory)
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
     stitching_widget.output_file_name_field.setText("fused_image.tif")
     error_message = "Output file name should either end with .zarr or .h5"
 

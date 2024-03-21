@@ -25,13 +25,6 @@ from qtpy.QtWidgets import (
 )
 from superqt import QCollapsible
 
-from brainglobe_stitch.core import (
-    fuse,
-    interpolate_overlaps,
-    load,
-    normalise_intensity,
-    stitch,
-)
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
@@ -233,7 +226,7 @@ class StitchingWidget(QWidget):
         self.imagej_path = Path(
             QFileDialog.getOpenFileName(
                 self, "Select FIJI Path", str(self.default_directory)
-            )
+            )[0]
         )
         self.imagej_path_text_field.setText(str(self.imagej_path))
         self.check_imagej_path()
@@ -259,7 +252,7 @@ class StitchingWidget(QWidget):
         self.add_tiles_button.setEnabled(True)
 
     def _on_add_tiles_button_clicked(self):
-        self.image_mosaic = load(self.working_directory)
+        self.image_mosaic = ImageMosaic(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
         self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
@@ -279,8 +272,7 @@ class StitchingWidget(QWidget):
         self.tile_layers.append(tile_layer)
 
     def _on_stitch_button_clicked(self):
-        stitch(
-            self.image_mosaic,
+        self.image_mosaic.stitch(
             self.imagej_path,
             resolution_level=2,
             selected_channel=self.fuse_channel_dropdown.currentText(),
@@ -297,8 +289,7 @@ class StitchingWidget(QWidget):
         self.interpolate_button.setEnabled(True)
 
     def _on_adjust_intensity_button_clicked(self):
-        normalise_intensity(
-            self.image_mosaic,
+        self.image_mosaic.normalise_intensity(
             resolution_level=self.resolution_to_display,
             percentile=self.percentile_field.value(),
         )
@@ -310,7 +301,7 @@ class StitchingWidget(QWidget):
         self.update_tiles_from_mosaic(data_for_napari)
 
     def _on_interpolation_button_clicked(self):
-        interpolate_overlaps(self.image_mosaic, self.resolution_to_display)
+        self.image_mosaic.interpolate_overlaps(self.resolution_to_display)
 
         data_for_napari = self.image_mosaic.data_for_napari(
             self.resolution_to_display
@@ -332,8 +323,7 @@ class StitchingWidget(QWidget):
             )
             return
 
-        fuse(
-            self.image_mosaic,
+        self.image_mosaic.fuse(
             self.output_file_name_field.text(),
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
             interpolate=self.interpolate_toggle.isChecked(),
