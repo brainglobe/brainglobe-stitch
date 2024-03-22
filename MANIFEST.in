@@ -8,10 +8,6 @@ exclude *.ipynb
 
 recursive-include brainglobe_stitch *.py
 recursive-include brainglobe_stitch *.ijm
-recursive-include temp_directory *.h5
-recursive-include temp_directory *.txt
-recursive-include temp_directory *.xml
-
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
