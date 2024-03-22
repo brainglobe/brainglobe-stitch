@@ -17,9 +17,14 @@ def download_test_data():
         processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
     )
 
-    yield
+    yield TEMP_DIR
 
     shutil.rmtree(TEMP_DIR)
+
+
+@pytest.fixture(scope="session")
+def test_data_directory():
+    yield TEMP_DIR
 
 
 @pytest.fixture(scope="module")

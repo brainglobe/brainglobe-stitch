@@ -43,7 +43,7 @@ def bad_bdv_directory():
     shutil.rmtree(bad_dir)
 
 
-def test_create_pyramid_bdv_h5(naive_bdv_directory):
+def test_create_pyramid_bdv_h5(naive_bdv_directory, test_data_directory):
     h5_path = naive_bdv_directory / "test_data_bdv.h5"
     with h5py.File(h5_path, "r") as f:
         num_tiles = len(f["t00000"].keys())
@@ -60,7 +60,7 @@ def test_create_pyramid_bdv_h5(naive_bdv_directory):
         num_done += 1
 
     with h5py.File(h5_path, "r") as f_out, h5py.File(
-        TEMP_DIR / "test_data_bdv.h5", "r"
+        test_data_directory / "test_data_bdv.h5", "r"
     ) as f_in:
         # Check that the number of groups/datasets in the parent is unchanged
         assert len(f_out.keys()) == len(f_in.keys())
