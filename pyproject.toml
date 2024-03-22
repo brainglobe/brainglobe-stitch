@@ -54,6 +54,7 @@ dev = [
   "pyqt5",
   "coverage",
   "tox",
+  "pooch",
   "black",
   "mypy",
   "pre-commit",
