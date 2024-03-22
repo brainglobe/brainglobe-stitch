@@ -1,14 +1,30 @@
 import shutil
 from pathlib import Path
 
+import pooch
 import pytest
 
-TEMP_DIR = Path("./temp_directory")
+TEMP_DIR = Path.home() / "temp_test_directory"
+TEST_DATA_URL = "https://gin.g-node.org/IgorTatarnikov/brainglobe-stitch-test/raw/master/brainglobe-stitch/brainglobe-stitch-test-data.zip"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def download_test_data():
+    TEMP_DIR.mkdir(exist_ok=True)
+    pooch.retrieve(
+        TEST_DATA_URL,
+        known_hash=None,
+        processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
+    )
+
+    yield
+
+    shutil.rmtree(TEMP_DIR)
 
 
 @pytest.fixture(scope="module")
 def naive_bdv_directory():
-    test_dir = Path("./test_directory")
+    test_dir = TEMP_DIR / "test_directory"
 
     shutil.copytree(
         TEMP_DIR,
@@ -28,7 +44,7 @@ def naive_bdv_directory():
 
 @pytest.fixture
 def bdv_directory_function_level():
-    test_dir = Path("./quick_test_directory")
+    test_dir = TEMP_DIR / "quick_test_directory"
 
     shutil.copytree(
         TEMP_DIR,
