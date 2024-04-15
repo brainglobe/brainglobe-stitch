@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import dask.array as da
 import h5py
 import numpy as np
+import numpy.typing as npt
 from rich.progress import Progress
 
 from brainglobe_stitch.file_utils import (
@@ -70,6 +71,34 @@ class ImageMosaic:
         if self.h5_file is not None:
             self.h5_file.close()
             self.h5_file = None
+
+    def data_for_napari(
+        self, resolution_level: int = 0
+    ) -> List[Tuple[da.Array, npt.NDArray]]:
+        """
+        Return data for visualisation in napari.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to get the data for.
+
+        Returns
+        -------
+        List[Tuple[da.Array, npt.NDArray]]
+            A list of tuples containing the data and the translation for each
+            tile scaled to the selected resolution.
+        """
+        data = []
+        for tile in self.tiles:
+            scaled_tile = tile.data_pyramid[resolution_level]
+            scaled_translation = (
+                np.array(tile.position)
+                // tile.resolution_pyramid[resolution_level]
+            )
+            data.append((scaled_tile, scaled_translation))
+
+        return data
 
     def load_mesospim_directory(self) -> None:
         """
