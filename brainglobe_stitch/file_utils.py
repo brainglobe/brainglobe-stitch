@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Dict, List, Union
 
 import h5py
 import numpy as np
@@ -74,3 +75,53 @@ def create_pyramid_bdv_h5(
 
             if yield_progress:
                 yield int(100 * num_done / num_slices)
+
+
+def parse_mesospim_metadata(
+    meta_file_name: Path,
+) -> List[Dict]:
+    """
+    Parse the metadata from a mesoSPIM .h5_meta.txt file.
+
+    Parameters
+    ----------
+    meta_file_name: Path
+        The path to the h5_meta.txt file.
+
+    Returns
+    -------
+    List[Dict]
+        A list of dictionaries containing the metadata for each tile.
+    """
+    tile_metadata = []
+    with open(meta_file_name, "r") as f:
+        lines = f.readlines()
+        curr_tile_metadata: Dict[str, Union[str, int, float]] = {}
+
+        for line in lines[3:]:
+            line = line.strip()
+            # Tile metadata is separated by a line starting with [CFG]
+            if line.startswith("[CFG"):
+                tile_metadata.append(curr_tile_metadata)
+                curr_tile_metadata = {}
+            # Skip the headers
+            elif line in HEADERS:
+                continue
+            # Skip empty lines
+            elif not line:
+                continue
+            else:
+                split_line = line.split("]")
+                value = split_line[1].strip()
+                # Check if the value is an int or a float
+                # If it is neither, store it as a string
+                if value.isdigit():
+                    curr_tile_metadata[split_line[0][1:]] = int(value)
+                else:
+                    try:
+                        curr_tile_metadata[split_line[0][1:]] = float(value)
+                    except ValueError:
+                        curr_tile_metadata[split_line[0][1:]] = value
+
+    tile_metadata.append(curr_tile_metadata)
+    return tile_metadata
