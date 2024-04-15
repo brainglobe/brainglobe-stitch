@@ -2,11 +2,13 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import dask.array as da
+import h5py
 import napari
 import numpy.typing as npt
 from brainglobe_utils.qtpy.logo import header_widget
 from napari import Viewer
 from napari.qt.threading import create_worker
+from napari.utils.notifications import show_warning
 from qtpy.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -17,7 +19,10 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from brainglobe_stitch.file_utils import create_pyramid_bdv_h5
+from brainglobe_stitch.file_utils import (
+    check_mesospim_directory,
+    create_pyramid_bdv_h5,
+)
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
 
@@ -157,3 +162,25 @@ class StitchingWidget(QWidget):
     def _set_tile_layers(self, tile_layer: napari.layers.Image):
         tile_layer = self._viewer.add_layer(tile_layer)
         self.tile_layers.append(tile_layer)
+
+    def check_and_load_mesospim_directory(self):
+        """
+        Check if the selected directory is a valid mesoSPIM directory,
+        if valid load the h5 file and check if the resolution pyramid
+        is present. If not present, enable the create pyramid button.
+        Otherwise, enable the add tiles button.
+        """
+        try:
+            (
+                self.xml_path,
+                self.meta_path,
+                self.h5_path,
+            ) = check_mesospim_directory(self.working_directory)
+            with h5py.File(self.h5_path, "r") as f:
+                if len(f["t00000/s00"].keys()) <= 1:
+                    show_warning("Resolution pyramid not found")
+                    self.create_pyramid_button.setEnabled(True)
+                else:
+                    self.add_tiles_button.setEnabled(True)
+        except FileNotFoundError:
+            show_warning("mesoSPIM directory not valid")
