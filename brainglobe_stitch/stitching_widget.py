@@ -68,6 +68,7 @@ class StitchingWidget(QWidget):
             package_name="brainglobe-stitch",
             package_tagline="Stitching mesoSPIM data",
         )
+
         self.layout().addWidget(self.header)
 
         self.default_directory = Path.home()
@@ -145,9 +146,6 @@ class StitchingWidget(QWidget):
 
     def _on_add_tiles_button_clicked(self):
         self.image_mosaic = ImageMosaic(self.working_directory)
-
-        self.fuse_channel_dropdown.clear()
-        self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
 
         napari_data = self.image_mosaic.data_for_napari(
             self.resolution_to_display
