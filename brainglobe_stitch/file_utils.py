@@ -199,3 +199,107 @@ def get_slice_attributes(
         slice_attributes[name] = sub_dict
 
     return slice_attributes
+
+
+def get_big_stitcher_transforms(
+    xml_path: Path, x_size: int, y_size: int, z_size: int
+) -> List[List[int]]:
+    """
+    Get the translations for each tile from a Big Data Viewer XML file.
+    The translations are calculated by BigStitcher.
+
+    Parameters
+    ----------
+    xml_path: Path
+        The path to the Big Data Viewer XML file.
+    x_size: int
+        The size of the image in the x-dimension.
+    y_size: int
+        The size of the image in the y-dimension.
+    z_size: int
+        The size of the image in the z-dimension.
+
+    Returns
+    -------
+    List[List[int]]
+        A list of translations for each tile.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+
+    stitch_transforms = root.findall(
+        ".//ViewTransform/[Name='Stitching Transform']/affine"
+    )
+    assert (
+        stitch_transforms is not None
+    ), "No stitching transforms found in XML file"
+
+    # Stitching Transforms are if aligning to grid is done manually
+    # Translation from Tile Configuration is if aligned automatically
+    grid_transforms = root.findall(
+        ".//ViewTransform/[Name='Translation from Tile Configuration']/affine"
+    )
+    if len(grid_transforms) == 0:
+        grid_transforms = root.findall(
+            ".//ViewTransform/[Name='Translation to Regular Grid']/affine"
+        )
+    assert grid_transforms is not None, "No grid transforms found in XML file"
+
+    z_scale_str = root.find(".//ViewTransform/[Name='calibration']/affine")
+    assert z_scale_str is not None, "No z scale found in XML file"
+    assert z_scale_str.text is not None, "No z scale found in XML file"
+    z_scale = float(z_scale_str.text.split()[-2])
+    deltas = []
+    grids = []
+    for i in range(len(stitch_transforms)):
+        delta_nums_text = stitch_transforms[i].text
+        grid_nums_text = grid_transforms[i].text
+
+        assert (
+            delta_nums_text is not None
+        ), "Error reading stitch transform from XML file"
+        assert (
+            grid_nums_text is not None
+        ), "Error reading grid transform from XML file"
+
+        delta_nums = delta_nums_text.split()
+        grid_nums = grid_nums_text.split()
+
+        curr_delta = [
+            round(float(delta_nums[3])),
+            round(float(delta_nums[7])),
+            round(float(delta_nums[11]) / z_scale),
+        ]
+        curr_grid = [
+            round(float(grid_nums[3])),
+            round(float(grid_nums[7])),
+            round(float(grid_nums[11]) / z_scale),
+        ]
+        deltas.append(curr_delta)
+        grids.append(curr_grid)
+
+    # Calculate the minimum value for the grid transform for each dimension
+    min_grid = [min([grid[i] for grid in grids]) for i in range(3)]
+    # Normalise the grid transforms by subtracting the minimum value
+    grids = [[grid[i] - min_grid[i] for i in range(3)] for grid in grids]
+    # Calculate the maximum delta (from BigStitcher) for each dimension
+    max_delta = [max([abs(delta[i]) for delta in deltas]) for i in range(3)]
+
+    translations = []
+
+    # Calculate the start and end coordinates for each tile such that the
+    # first tile is at 0,0,0
+    for i in range(len(deltas)):
+        curr_delta = deltas[i]
+        curr_grid = grids[i]
+
+        x_start = curr_grid[0] + curr_delta[0] + max_delta[0]
+        x_end = x_start + x_size
+        y_start = curr_grid[1] + curr_delta[1] + max_delta[1]
+        y_end = y_start + y_size
+        z_start = curr_grid[2] + curr_delta[2] + max_delta[2]
+        z_end = z_start + z_size
+
+        translations.append([x_start, x_end, y_start, y_end, z_start, z_end])
+
+    return translations
