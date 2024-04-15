@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import h5py
 import numpy as np
@@ -125,3 +125,42 @@ def parse_mesospim_metadata(
 
     tile_metadata.append(curr_tile_metadata)
     return tile_metadata
+
+
+def check_mesospim_directory(
+    mesospim_directory: Path,
+) -> Tuple[Path, Path, Path]:
+    """
+    Check that the mesoSPIM directory contains the expected files.
+
+    Parameters
+    ----------
+    mesospim_directory: Path
+        The path to the mesoSPIM directory.
+
+    Returns
+    -------
+    Tuple[Path, Path, Path]
+        The paths to the bdv.xml, h5_meta.txt, and bdv.h5 files.
+    """
+    # List all files in the directory that do not start with a period
+    # But end in the correct file extension
+    xml_path = list(mesospim_directory.glob("[!.]*bdv.xml"))
+    meta_path = list(mesospim_directory.glob("[!.]*h5_meta.txt"))
+    h5_path = list(mesospim_directory.glob("[!.]*bdv.h5"))
+
+    # Check that there is exactly one file of each type
+    if len(xml_path) != 1:
+        raise FileNotFoundError(
+            f"Expected 1 bdv.xml file, found {len(xml_path)}"
+        )
+
+    if len(meta_path) != 1:
+        raise FileNotFoundError(
+            f"Expected 1 h5_meta.txt file, found {len(meta_path)}"
+        )
+
+    if len(h5_path) != 1:
+        raise FileNotFoundError(f"Expected 1 h5 file, found {len(h5_path)}")
+
+    return xml_path[0], meta_path[0], h5_path[0]
