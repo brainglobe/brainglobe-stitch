@@ -14,6 +14,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -58,6 +59,7 @@ class StitchingWidget(QWidget):
     def __init__(self, napari_viewer: Viewer):
         super().__init__()
         self._viewer = napari_viewer
+        self.progress_bar = QProgressBar(self)
         self.image_mosaic: Optional[ImageMosaic] = None
         self.tile_layers: List[napari.layers.Image] = []
         self.resolution_to_display: int = 3
