@@ -1,3 +1,4 @@
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
@@ -164,3 +165,37 @@ def check_mesospim_directory(
         raise FileNotFoundError(f"Expected 1 h5 file, found {len(h5_path)}")
 
     return xml_path[0], meta_path[0], h5_path[0]
+
+
+def get_slice_attributes(
+    xml_path: Path, tile_names: List[str]
+) -> Dict[str, Dict]:
+    """
+    Get the slice attributes from a Big Data Viewer XML file. Attributes
+    include the illumination id, channel id, and tile id, and angle id.
+
+    Parameters
+    ----------
+    xml_path: Path
+        The path to the XML file.
+    tile_names: List[str]
+        The names of the tiles.
+
+    Returns
+    -------
+    Dict[str, Dict]
+        A dictionary containing the slice attributes for each tile.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    view_setups = root.findall(".//ViewSetup//attributes")
+
+    slice_attributes = {}
+    for child, name in zip(view_setups, tile_names):
+        sub_dict = {}
+        for sub_child in child:
+            sub_dict[sub_child.tag] = sub_child.text
+
+        slice_attributes[name] = sub_dict
+
+    return slice_attributes
