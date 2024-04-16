@@ -255,6 +255,14 @@ class ImageMosaic:
 
         return
 
+    def stitch(
+        self,
+        fiji_path: Path,
+        resolution_level: int,
+        selected_channel: str,
+    ) -> None:
+        pass
+
     def reload_resolution_pyramid_level(self, resolution_level: int) -> None:
         pass
 
