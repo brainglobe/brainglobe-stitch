@@ -254,3 +254,49 @@ class ImageMosaic:
                 )
 
         return
+
+    def reload_resolution_pyramid_level(self, resolution_level: int) -> None:
+        pass
+
+    def calculate_overlaps(self) -> None:
+        pass
+
+    def normalise_intensity(
+        self, resolution_level: int = 0, percentile: int = 50
+    ) -> None:
+        pass
+
+    def calculate_intensity_scale_factors(
+        self, resolution_level: int = 2, percentile: int = 50
+    ):
+        pass
+
+    def interpolate_overlaps(self, resolution_level: int) -> None:
+        pass
+
+    def fuse(
+        self,
+        output_file_name: str = "fused.zarr",
+        normalise_intensity: bool = False,
+        interpolate: bool = False,
+    ) -> None:
+        pass
+
+    def _fuse_to_zarr(
+        self,
+        output_path: Path,
+        fused_image_shape: Tuple[int, ...],
+        pyramid_depth: int = 6,
+    ) -> None:
+        pass
+
+    def _fuse_to_bdv_h5(
+        self,
+        output_path: Path,
+        fused_image_shape: Tuple[int, ...],
+        pyramid_depth: int = 6,
+    ) -> None:
+        pass
+
+    def get_metadata_for_zarr(self, pyramid_depth: int = 6) -> None:
+        pass
