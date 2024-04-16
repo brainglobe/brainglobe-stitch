@@ -31,8 +31,7 @@ dependencies = [
     "zarr",
     "numpy",
     "qtpy",
-    "tifffile",
-    "rich"
+    "tifffile"
 ]
 
 [project.urls]
@@ -42,8 +41,9 @@ dependencies = [
 "Source Code" = "https://github.com/brainglobe/brainglobe-stitch"
 "User Support" = "https://forum.image.sc/tag/brainglobe"
 
+
 [project.entry-points."napari.manifest"]
-brainglobe-stitch = "brainglobe_stitch:napari.yaml"
+mesospim-stitcher = "brainglobe_stitch:napari.yaml"
 
 [project.optional-dependencies]
 dev = [
