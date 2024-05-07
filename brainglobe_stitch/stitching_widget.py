@@ -34,10 +34,10 @@ def add_tiles_from_mosaic(
     Add tiles to the napari viewer from the ImageMosaic.
 
     Parameters
-    ----------
-    napari_data: List[Tuple[da.Array, npt.NDArray]]
+    ------------
+    napari_data : List[Tuple[da.Array, npt.NDArray]]
         The data and position for each tile in the mosaic.
-    tile_names: List[str]
+    tile_names : List[str]
         The list of tile names.
     """
 
@@ -56,6 +56,40 @@ def add_tiles_from_mosaic(
 
 
 class StitchingWidget(QWidget):
+    """
+    napari widget for stitching large tiled 3d images.
+
+    Parameters
+    ------------
+    napari_viewer : napari.Viewer
+        The napari viewer to add the widget to.
+
+    Attributes
+    ----------
+    progress_bar : QProgressBar
+        The progress bar for the widget.
+    image_mosaic : Optional[ImageMosaic]
+        The ImageMosaic object for the widget.
+    tile_layers : List[napari.layers.Image]
+        The list of napari layers containing the tiles.
+    resolution_to_display : int
+        The resolution level to display in napari.
+    header : QWidget
+        The header widget for the StitchingWidget.
+    working_directory : Path
+        The working directory for the widget.
+    select_mesospim_directory : QWidget
+        The widget for selecting the mesoSPIM directory.
+    mesospim_directory_text_field : QLineEdit
+        The text field for the mesoSPIM directory.
+    open_file_dialog : QPushButton
+        The button for opening the file dialog.
+    create_pyramid_button : QPushButton
+        The button for creating the resolution pyramid.
+    add_tiles_button : QPushButton
+        The button for adding the tiles to the viewer.
+    """
+
     def __init__(self, napari_viewer: Viewer):
         super().__init__()
         self._viewer = napari_viewer
@@ -73,14 +107,14 @@ class StitchingWidget(QWidget):
 
         self.layout().addWidget(self.header)
 
-        self.default_directory = Path.home()
-        self.working_directory = self.default_directory
+        default_directory = Path.home()
+        self.working_directory = default_directory
 
         self.select_mesospim_directory = QWidget()
         self.select_mesospim_directory.setLayout(QHBoxLayout())
 
         self.mesospim_directory_text_field = QLineEdit()
-        self.mesospim_directory_text_field.setText(str(self.default_directory))
+        self.mesospim_directory_text_field.setText(str(default_directory))
         self.mesospim_directory_text_field.editingFinished.connect(
             self._on_mesospim_directory_text_edited
         )
@@ -115,6 +149,9 @@ class StitchingWidget(QWidget):
         self.layout().addWidget(self.add_tiles_button)
 
     def _on_open_file_dialog_clicked(self):
+        """
+        Open a file dialog to select the mesoSPIM directory.
+        """
         self.working_directory = Path(
             QFileDialog.getExistingDirectory(
                 self, "Select mesoSPIM directory", str(self.default_directory)
@@ -125,12 +162,18 @@ class StitchingWidget(QWidget):
         self.check_and_load_mesospim_directory()
 
     def _on_mesospim_directory_text_edited(self):
+        """
+        Update the working directory when the text field is edited.
+        """
         self.working_directory = Path(
             self.mesospim_directory_text_field.text()
         )
         self.check_and_load_mesospim_directory()
 
     def _on_create_pyramid_button_clicked(self):
+        """
+        Create the resolution pyramid for the input mesoSPIM h5 data.
+        """
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 100)
 
@@ -147,6 +190,9 @@ class StitchingWidget(QWidget):
         self.add_tiles_button.setEnabled(True)
 
     def _on_add_tiles_button_clicked(self):
+        """
+        Add the tiles from the mesoSPIM h5 file to the viewer.
+        """
         self.image_mosaic = ImageMosaic(self.working_directory)
 
         napari_data = self.image_mosaic.data_for_napari(
@@ -160,6 +206,13 @@ class StitchingWidget(QWidget):
         worker.start()
 
     def _set_tile_layers(self, tile_layer: napari.layers.Image):
+        """
+        Add the tile layer to the viewer and store it in the tile_layers list.
+
+        Parameters
+        ----------
+        tile_layer : napari.layers.Image
+        """
         tile_layer = self._viewer.add_layer(tile_layer)
         self.tile_layers.append(tile_layer)
 
