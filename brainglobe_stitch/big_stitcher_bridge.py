@@ -11,7 +11,7 @@ def run_big_stitcher(
     selected_channel: int = 488,
     downsample_x: int = 4,
     downsample_y: int = 4,
-    downsample_z: int = 4,
+    downsample_z: int = 1,
 ) -> subprocess.CompletedProcess:
     """
     Run the BigStitcher ImageJ macro in headless mode. Output is captured

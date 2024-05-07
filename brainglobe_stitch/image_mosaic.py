@@ -209,7 +209,7 @@ class ImageMosaic:
                     tile.position = translation
         try:
             self.read_big_stitcher_transforms()
-        except (IndexError, AssertionError):
+        except (IndexError, AssertionError, ValueError):
             print("BigStitcher transforms not found.")
 
         self.calculate_overlaps()
@@ -304,10 +304,11 @@ class ImageMosaic:
                 raise
 
         # Extract the downsample factors for the selected resolution level
-        downsample_x, downsample_y, downsample_z = self.tiles[
+        downsample_z, downsample_y, downsample_x = self.tiles[
             0
         ].resolution_pyramid[resolution_level]
 
+        print(downsample_x, downsample_y, downsample_z)
         assert self.xml_path is not None
         assert self.tile_config_path is not None
 
