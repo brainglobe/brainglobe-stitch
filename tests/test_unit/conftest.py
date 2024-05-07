@@ -13,7 +13,7 @@ def download_test_data():
     TEMP_DIR.mkdir(exist_ok=True)
     pooch.retrieve(
         TEST_DATA_URL,
-        known_hash=None,
+        known_hash="9437cb05566f03cd78cd905da1cd939dd1bb439837f96e32c6fb818b9b010a6e",
         processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
     )
 

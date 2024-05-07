@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple, Union
 
 import h5py
 import numpy as np
+import numpy.typing as npt
 
 HEADERS = [
     "[POSITION]",
@@ -16,25 +17,37 @@ HEADERS = [
 def create_pyramid_bdv_h5(
     input_file: Path,
     yield_progress: bool = False,
+    resolutions_array: npt.NDArray = np.array(
+        [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]]
+    ),
+    subdivisions_array: npt.NDArray = np.array(
+        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
+    ),
 ):
     """
-    Create a resolution pyramid for a Big Data Viewer HDF5 file.
+    Create a resolution pyramid for a Big Data Viewer HDF5 file. The function
+    assumes no pyramid exists and creates a new one in place. By default,
+    the function creates a 5 level pyramid with downsampling factors of 1, 2,
+    4, 8, and 16 in x and y, with no downsampling in z. Deletes the old
+    resolutions and subdivisions datasets and creates new ones.
+
 
     Parameters
     ----------
     input_file: Path
         The path to the input HDF5 file.
     yield_progress: bool, optional
-        Whether to yield progress.
+        Whether to yield progress. If True, the function will yield the
+        progress as a percentage.
+    resolutions_array: npt.NDArray, optional
+        The downsampling factors to use for each resolution level.
+        This is a 2D array where each row represents a resolution level and the
+        columns represent the downsampling factors for x, y, and z.
+    subdivisions_array: npt.NDArray, optional
+        The size of the blocks at each resolution level.
+        This is a 2D array where each row represents a resolution level and the
+        columns represent the size of the blocks for x, y, and z.
     """
-    resolutions_array = np.array(
-        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
-    )
-
-    subdivisions_array = np.array(
-        [[32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16], [32, 32, 16]]
-    )
-
     with h5py.File(input_file, "r+") as f:
         data_group = f["t00000"]
         num_done = 0
@@ -54,9 +67,12 @@ def create_pyramid_bdv_h5(
                 )
                 prev_resolution = grp[f"{i - 1}/cells"]
                 # Add 1 to account for odd dimensions
+
                 grp.require_dataset(
                     f"{i}/cells",
                     dtype=prev_resolution.dtype,
+                    # Data is stored in z,y,x, but the downsampling
+                    # factors are in x,y,z, so need to reverse
                     shape=(
                         (prev_resolution.shape[0] + 1)
                         // downsampling_factors[2],

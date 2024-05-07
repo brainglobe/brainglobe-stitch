@@ -179,9 +179,16 @@ class ImageMosaic:
                 )
 
             tile.data_pyramid = tile_data
-            tile.resolution_pyramid = np.array(
-                self.h5_file[f"{tile_name}/resolutions"]
+
+            # Add the scaling factor for each resolution level of the pyramid.
+            resolutions = self.h5_file[f"{tile_name}/resolutions"]
+            tile.resolution_pyramid = np.ones(
+                (len(resolutions), 3), dtype=np.int16
             )
+
+            # Switch to z,y,x order from x,y,z order
+            for i, resolution in enumerate(resolutions):
+                tile.resolution_pyramid[i] = resolution[-1::-1]
 
         # Don't rewrite the tile config file if it already exists
         # These will be used as the initial tile positions
