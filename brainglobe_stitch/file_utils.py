@@ -73,12 +73,23 @@ def create_pyramid_bdv_h5(
                     dtype=prev_resolution.dtype,
                     # Data is stored in z,y,x, but the downsampling
                     # factors are in x,y,z, so need to reverse
+                    # Adding 1 allows to account for dimensions of odd size,
+                    # Only add 1 if the downsampling factor is greater than 1
                     shape=(
-                        (prev_resolution.shape[0] + 1)
+                        (
+                            prev_resolution.shape[0]
+                            + (downsampling_factors[2] > 1)
+                        )
                         // downsampling_factors[2],
-                        (prev_resolution.shape[1] + 1)
+                        (
+                            prev_resolution.shape[1]
+                            + (downsampling_factors[1] > 1)
+                        )
                         // downsampling_factors[1],
-                        (prev_resolution.shape[2] + 1)
+                        (
+                            prev_resolution.shape[2]
+                            + (downsampling_factors[0] > 1)
+                        )
                         // downsampling_factors[0],
                     ),
                 )
