@@ -4,10 +4,19 @@ import pytest
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
+# The tiles lie in one z-plane and are arranged in a 2x2 grid with 2 channels.
+# Each tile is 128x128x107 pixels (x, y, z).
+# The tiles overlap by 10% in x and y (13 pixels).
+# The tiles are arranged in the following pattern:
+# channel 0   | channel 1
+# 00 10          | 04 05
+# 01 11           | 14 15
 NUM_TILES = 8
 NUM_RESOLUTIONS = 5
 NUM_CHANNELS = 2
 TILE_SIZE = (107, 128, 128)
+# Expected tile config for the test data in test_data_bdv.h5
+# The tile positions are in pixels in x, y, z order
 EXPECTED_TILE_CONFIG = [
     "dim=3",
     "00;;(0,0,0)",
@@ -19,6 +28,8 @@ EXPECTED_TILE_CONFIG = [
     "14;;(115,0,0)",
     "15;;(115,115,0)",
 ]
+# Expected tile positions for the test data in test_data_bdv.h5
+# The tile positions are in pixels in z, y, x order
 EXPECTED_TILE_POSITIONS = [
     [0, 0, 0],
     [0, 115, 0],
