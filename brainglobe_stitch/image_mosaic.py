@@ -178,9 +178,14 @@ class ImageMosaic:
                 )
 
             tile.data_pyramid = tile_data
-            tile.resolution_pyramid = np.array(
-                self.h5_file[f"{tile_name}/resolutions"]
+
+            resolutions = self.h5_file[f"{tile_name}/resolutions"]
+            tile.resolution_pyramid = np.ones(
+                (len(resolutions), 3), dtype=np.int16
             )
+
+            for i, resolution in enumerate(resolutions):
+                tile.resolution_pyramid[i] = resolution[-1::-1]
 
         # Don't rewrite the tile config if it already exists
         # Need to read in stage coordinates if not writing the tile config
@@ -204,7 +209,7 @@ class ImageMosaic:
                     tile.position = translation
         try:
             self.read_big_stitcher_transforms()
-        except AssertionError:
+        except (IndexError, AssertionError):
             print("BigStitcher transforms not found.")
 
         self.calculate_overlaps()

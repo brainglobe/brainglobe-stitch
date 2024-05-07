@@ -20,6 +20,7 @@ HEADERS = [
 def create_pyramid_bdv_h5(
     input_file: Path,
     yield_progress: bool = False,
+    overwrite: bool = False,
 ):
     """
     Create a resolution pyramid for a Big Data Viewer HDF5 file.
@@ -30,9 +31,11 @@ def create_pyramid_bdv_h5(
         The path to the input HDF5 file.
     yield_progress: bool, optional
         Whether to yield progress.
+    overwrite: bool, optional
+        Whether to overwrite the existing downsampled datasets.
     """
     resolutions_array = np.array(
-        [[1, 1, 1], [2, 2, 2], [4, 4, 4], [8, 8, 8], [16, 16, 16]]
+        [[1, 1, 1], [2, 2, 1], [4, 4, 1], [8, 8, 1], [16, 16, 1]]
     )
 
     subdivisions_array = np.array(
@@ -57,13 +60,16 @@ def create_pyramid_bdv_h5(
                     resolutions_array[i] // resolutions_array[i - 1]
                 )
                 prev_resolution = grp[f"{i - 1}/cells"]
+
+                if overwrite and f"{i}/cells" in grp:
+                    del grp[f"{i}/cells"]
+
                 # Add 1 to account for odd dimensions
                 grp.require_dataset(
                     f"{i}/cells",
                     dtype=prev_resolution.dtype,
                     shape=(
-                        (prev_resolution.shape[0] + 1)
-                        // downsampling_factors[2],
+                        (prev_resolution.shape[0]) // downsampling_factors[2],
                         (prev_resolution.shape[1] + 1)
                         // downsampling_factors[1],
                         (prev_resolution.shape[2] + 1)
