@@ -67,15 +67,17 @@ class StitchingWidget(QWidget):
     Attributes
     ----------
     progress_bar : QProgressBar
-        The progress bar for the widget.
+        The progress bar for the widget, reused for multiple function.
     image_mosaic : Optional[ImageMosaic]
-        The ImageMosaic object for the widget.
+        The ImageMosaic object representing the data that will be stitched.
     tile_layers : List[napari.layers.Image]
         The list of napari layers containing the tiles.
     resolution_to_display : int
-        The resolution level to display in napari.
+        The resolution level of the pyramid to display in napari.
     header : QWidget
         The header widget for the StitchingWidget.
+    default_directory : Path
+        The default directory for the widget (home directory by default).
     working_directory : Path
         The working directory for the widget.
     select_mesospim_directory : QWidget
@@ -107,14 +109,14 @@ class StitchingWidget(QWidget):
 
         self.layout().addWidget(self.header)
 
-        default_directory = Path.home()
-        self.working_directory = default_directory
+        self.default_directory = Path.home()
+        self.working_directory = self.default_directory
 
         self.select_mesospim_directory = QWidget()
         self.select_mesospim_directory.setLayout(QHBoxLayout())
 
         self.mesospim_directory_text_field = QLineEdit()
-        self.mesospim_directory_text_field.setText(str(default_directory))
+        self.mesospim_directory_text_field.setText(str(self.default_directory))
         self.mesospim_directory_text_field.editingFinished.connect(
             self._on_mesospim_directory_text_edited
         )
