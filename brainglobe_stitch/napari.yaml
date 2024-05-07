@@ -1,0 +1,10 @@
+name: brainglobe-stitch
+display_name: BrainGlobe Stitch
+contributions:
+  commands:
+    - id: brainglobe-stitch.make_stitching_widget
+      python_name: brainglobe_stitch.stitching_widget:StitchingWidget
+      title: Make stitching widget
+  widgets:
+    - command: brainglobe-stitch.make_stitching_widget
+      display_name: BrainGlobe Stitch

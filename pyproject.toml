@@ -21,6 +21,18 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 
+dependencies = [
+    "napari>=0.4.18",
+    "brainglobe-utils>=0.3.4",
+    "h5py",
+    "napari-ome-zarr",
+    "ome-zarr",
+    "zarr",
+    "numpy",
+    "qtpy",
+    "tifffile"
+]
+
 [project.urls]
 "Homepage" = "https://brainglobe.info"
 "Bug Tracker" = "https://github.com/brainglobe/brainglobe-stitch/issues"
@@ -29,12 +41,19 @@ classifiers = [
 "User Support" = "https://forum.image.sc/tag/brainglobe"
 
 
+[project.entry-points."napari.manifest"]
+mesospim-stitcher = "brainglobe_stitch:napari.yaml"
+
 [project.optional-dependencies]
 dev = [
   "pytest",
   "pytest-cov",
+  "pytest-mock",
+  "pytest-qt",
+  "pyqt5",
   "coverage",
   "tox",
+  "pooch",
   "black",
   "mypy",
   "pre-commit",
@@ -99,8 +118,19 @@ python =
     3.11: py311
 
 [testenv]
+platform =
+    macos: darwin
+    linux: linux
+    windows: win32
+passenv =
+    CI
+    GITHUB_ACTIONS
+    DISPLAY
+    XAUTHORITY
+    NUMPY_EXPERIMENTAL_ARRAY_FUNCTION
+    PYVISTA_OFF_SCREEN
 extras =
     dev
 commands =
-    pytest -v --color=yes --cov=brainglobe_stitch --cov-report=xml
+    pytest -v --color=yes --cov=brainglobe-stitch --cov-report=xml
 """
