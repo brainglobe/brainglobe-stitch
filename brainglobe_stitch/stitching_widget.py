@@ -314,12 +314,12 @@ class StitchingWidget(QWidget):
             show_warning("Output file name not specified")
             return
 
-        if not (
-            self.output_file_name_field.text().endswith(".zarr")
-            or self.output_file_name_field.text().endswith(".h5")
-        ):
+        path = Path(self.output_file_name_field.text())
+        valid_extensions = [".zarr", ".h5", ".tif", ".tiff"]
+
+        if path.suffix not in valid_extensions:
             show_warning(
-                "Output file name should either end with .zarr or .h5"
+                f"Output file name should either end with {valid_extensions}"
             )
             return
 

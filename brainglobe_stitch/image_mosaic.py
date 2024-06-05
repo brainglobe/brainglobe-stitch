@@ -6,6 +6,7 @@ import dask.array as da
 import h5py
 import numpy as np
 import numpy.typing as npt
+import tifffile
 import zarr
 from numcodecs import Blosc
 from ome_zarr.dask_utils import downscale_nearest
@@ -598,6 +599,8 @@ class ImageMosaic:
             self._fuse_to_zarr(output_path, fused_image_shape)
         elif output_path.suffix == ".h5":
             self._fuse_to_bdv_h5(output_path, fused_image_shape)
+        elif output_path.suffix in [".tif", ".tiff"]:
+            self._fuse_to_tiff(output_path, fused_image_shape)
 
     def _fuse_to_zarr(
         self,
@@ -853,6 +856,98 @@ class ImageMosaic:
         )
 
         output_file.close()
+
+    def _fuse_to_tiff(
+        self, output_path: Path, fused_image_shape: Tuple[int, ...]
+    ) -> None:
+        """
+        Fuse the tiles in the ImageMosaic into a single image and save it as a
+        TIFF file.
+
+        Parameters
+        ----------
+        output_path: Path
+            The path of the output file.
+        fused_image_shape: Tuple[int, ...]
+            The shape of the fused image.
+        """
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        batch_size = 16
+        batched_image_shape = (batch_size, *fused_image_shape[1:])
+        tiff_writers = []
+
+        if self.num_channels > 1:
+            for i in range(self.num_channels):
+                curr_channel_path = output_path.with_stem(
+                    f"{output_path.stem}_{self.channel_names[i]}"
+                )
+                tiff_writers.append(
+                    tifffile.TiffWriter(curr_channel_path, imagej=True)
+                )
+        else:
+            tiff_writers.append(tifffile.TiffWriter(output_path, imagej=True))
+
+        # First set of planes will not always write batch_number of planes as
+        # there's a z-shift for each tile
+        for i in range(self.num_channels - 1, -1, -1):
+            fused_image_buffer = np.zeros(batched_image_shape, dtype=np.uint16)
+            for tile in self.tiles[-1::-1]:
+                # Place the tiles in reverse order of acquisition
+                # For the current channel
+                if tile.channel_id != i:
+                    continue
+
+                fused_image_buffer[
+                    tile.position[0] : batch_size,
+                    tile.position[1] : tile.position[1] + y_size,
+                    tile.position[2] : tile.position[2] + x_size,
+                ] = tile.data_pyramid[0][
+                    0 : batch_size - tile.position[0]
+                ].compute()
+
+            for plane in fused_image_buffer:
+                tiff_writers[i].write(
+                    plane[np.newaxis, ...],
+                    contiguous=True,
+                    resolution=(self.x_y_resolution, self.x_y_resolution),
+                    metadata={"spacing": self.z_resolution, "unit": "um"},
+                )
+
+            for j in range(batch_size, fused_image_shape[0], batch_size):
+                # Place the tiles in reverse order of acquisition
+                fused_image_buffer = np.zeros(
+                    batched_image_shape, dtype=np.uint16
+                )
+                max_num_planes = 0
+                for tile in self.tiles[-1::-1]:
+                    # Place the tiles in reverse order of acquisition
+                    # For the current channel
+                    if tile.channel_id != i:
+                        continue
+
+                    adjusted_start = j - tile.position[0]
+                    adjusted_end = min(adjusted_start + batch_size, z_size)
+                    num_planes = adjusted_end - adjusted_start
+                    max_num_planes = max(max_num_planes, num_planes)
+
+                    fused_image_buffer[
+                        :num_planes,
+                        tile.position[1] : tile.position[1] + y_size,
+                        tile.position[2] : tile.position[2] + x_size,
+                    ] = tile.data_pyramid[0][
+                        adjusted_start:adjusted_end
+                    ].compute()
+
+                for plane in fused_image_buffer[:max_num_planes]:
+                    tiff_writers[i].write(
+                        plane[np.newaxis, ...],
+                        contiguous=True,
+                        resolution=(self.x_y_resolution, self.x_y_resolution),
+                        metadata={"spacing": self.z_resolution, "unit": "um"},
+                    )
+
+            tiff_writers[i].close()
 
     def get_metadata_for_zarr(
         self, pyramid_depth: int = 6
