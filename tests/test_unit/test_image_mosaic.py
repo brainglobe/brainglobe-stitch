@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -31,14 +32,14 @@ EXPECTED_TILE_CONFIG = [
 # Expected tile positions for the test data in test_data_bdv.h5
 # The tile positions are in pixels in z, y, x order
 EXPECTED_TILE_POSITIONS = [
-    [0, 0, 0],
-    [0, 115, 0],
-    [0, 0, 0],
-    [0, 115, 0],
-    [0, 0, 115],
-    [0, 115, 115],
-    [0, 0, 115],
-    [0, 115, 115],
+    [3, 4, 2],
+    [2, 120, 0],
+    [3, 4, 2],
+    [2, 120, 0],
+    [6, 7, 118],
+    [5, 123, 116],
+    [6, 7, 118],
+    [5, 123, 116],
 ]
 
 
@@ -87,6 +88,26 @@ def test_write_big_stitcher_tile_config(image_mosaic, naive_bdv_directory):
     with open(naive_bdv_directory / "test_data_bdv_tile_config.txt", "r") as f:
         for idx, line in enumerate(f):
             assert line.strip() == EXPECTED_TILE_CONFIG[idx]
+
+
+def test_stitch(mocker, image_mosaic, naive_bdv_directory):
+    mock_completed_process = mocker.patch(
+        "subprocess.CompletedProcess", autospec=True
+    )
+    mock_run_big_stitcher = mocker.patch(
+        "brainglobe_stitch.image_mosaic.run_big_stitcher",
+        return_value=mock_completed_process,
+    )
+    mock_completed_process.stdout = ""
+    mock_completed_process.stderr = ""
+
+    fiji_path = Path("/path/to/fiji")
+    resolution_level = 2
+    selected_channel = "567 nm"
+
+    image_mosaic.stitch(fiji_path, resolution_level, selected_channel)
+
+    mock_run_big_stitcher.assert_called_once()
 
 
 def test_data_for_napari(image_mosaic):
