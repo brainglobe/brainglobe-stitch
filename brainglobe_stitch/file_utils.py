@@ -249,7 +249,8 @@ def get_big_stitcher_transforms(
     Returns
     -------
     List[List[int]]
-        A list of translations for each tile.
+        A list of translations for each tile. Each translation is a list with
+        the following order: [x_start, x_end, y_start, y_end, z_start, z_end].
     """
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -261,8 +262,8 @@ def get_big_stitcher_transforms(
         stitch_transforms is not None
     ), "No stitching transforms found in XML file"
 
-    # Stitching Transforms are if aligning to grid is done manually
-    # Translation from Tile Configuration is if aligned automatically
+    # Stitching Transforms are there if aligning to grid is done manually
+    # Translation from Tile Configurations are there if aligned automatically
     grid_transforms = root.findall(
         ".//ViewTransform/[Name='Translation from Tile Configuration']/affine"
     )
