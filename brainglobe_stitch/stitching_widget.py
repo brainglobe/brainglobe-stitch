@@ -71,6 +71,8 @@ class StitchingWidget(QWidget):
         The progress bar for the widget, reused for multiple function.
     image_mosaic : Optional[ImageMosaic]
         The ImageMosaic object representing the data that will be stitched.
+    imagej_path : Optional[Path]
+        The path to the ImageJ executable.
     tile_layers : List[napari.layers.Image]
         The list of napari layers containing the tiles.
     resolution_to_display : int
@@ -86,11 +88,21 @@ class StitchingWidget(QWidget):
     mesospim_directory_text_field : QLineEdit
         The text field for the mesoSPIM directory.
     open_file_dialog : QPushButton
-        The button for opening the file dialog.
+        The button for opening the file dialog for the mesoSPIM directory.
     create_pyramid_button : QPushButton
         The button for creating the resolution pyramid.
     add_tiles_button : QPushButton
         The button for adding the tiles to the viewer.
+    select_imagej_path : QWidget
+        The widget for selecting the ImageJ path.
+    imagej_path_text_field : QLineEdit
+        The text field for the ImageJ path.
+    open_file_dialog_imagej : QPushButton
+        The button for opening the file dialog for the ImageJ path.#
+    fuse_channel_dropdown : QComboBox
+        The dropdown for selecting the channel to fuse.
+    stitch_button : QPushButton
+        The button for stitching the tiles.
     """
 
     def __init__(self, napari_viewer: Viewer):
@@ -180,6 +192,8 @@ class StitchingWidget(QWidget):
         self.stitch_button.clicked.connect(self._on_stitch_button_clicked)
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
+
+        self.layout().addWidget(self.progress_bar)
 
     def _on_open_file_dialog_clicked(self):
         """

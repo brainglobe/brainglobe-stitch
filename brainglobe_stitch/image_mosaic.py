@@ -27,15 +27,15 @@ class ImageMosaic:
     ----------
     directory : Path
         The directory containing the image data.
-    xml_path : Path | None
+    xml_path : Optional[Path]
         The path to the Big Data Viewer XML file.
-    meta_path : Path | None
+    meta_path : Optional[Path]
         The path to the mesoSPIM metadata file.
-    h5_path : Path | None
+    h5_path : Optional[Path]
         The path to the Big Data Viewer h5 file containing the raw data.
-    tile_config_path : Path | None
+    tile_config_path : Optional[Path]
         The path to the BigStitcher tile configuration file.
-    h5_file : h5py.File | None
+    h5_file : Optional[h5py.File]
         An open h5py file object for the raw data.
     channel_names : List[str]
         The names of the channels in the image as strings.
@@ -322,6 +322,7 @@ class ImageMosaic:
             f.write(result.stdout)
             f.write(result.stderr)
 
+        # Print the output of BigStitcher to the command line
         print(result.stdout)
 
         # Wait for the BigStitcher to write XML file
@@ -330,8 +331,13 @@ class ImageMosaic:
 
         self.read_big_stitcher_transforms()
 
-    def read_big_stitcher_transforms(self):
+    def read_big_stitcher_transforms(self) -> None:
+        """
+        Read the BigStitcher transforms from the XML file and update the tile
+        positions accordingly.
+        """
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        assert self.xml_path is not None
         stitched_translations = get_big_stitcher_transforms(
             self.xml_path, z_size, y_size, x_size
         )
