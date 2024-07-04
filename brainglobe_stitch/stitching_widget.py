@@ -10,6 +10,7 @@ from napari import Viewer
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_warning
 from qtpy.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -150,6 +151,35 @@ class StitchingWidget(QWidget):
         self.add_tiles_button.setEnabled(False)
         self.layout().addWidget(self.add_tiles_button)
 
+        self.select_imagej_path = QWidget()
+        self.select_imagej_path.setLayout(QHBoxLayout())
+
+        self.imagej_path_text_field = QLineEdit()
+        self.imagej_path_text_field.setText(str(self.default_directory))
+        self.imagej_path_text_field.editingFinished.connect(
+            self._on_imagej_path_text_edited
+        )
+        self.select_imagej_path.layout().addWidget(self.imagej_path_text_field)
+
+        self.open_file_dialog_imagej = QPushButton("Browse")
+        self.open_file_dialog_imagej.clicked.connect(
+            self._on_open_file_dialog_imagej_clicked
+        )
+        self.select_imagej_path.layout().addWidget(
+            self.open_file_dialog_imagej
+        )
+
+        self.layout().addWidget(QLabel("Select ImageJ path:"))
+        self.layout().addWidget(self.select_imagej_path)
+
+        self.fuse_channel_dropdown = QComboBox(parent=self)
+        self.layout().addWidget(self.fuse_channel_dropdown)
+
+        self.stitch_button = QPushButton("Stitch")
+        self.stitch_button.clicked.connect(self._on_stitch_button_clicked)
+        self.stitch_button.setEnabled(False)
+        self.layout().addWidget(self.stitch_button)
+
     def _on_open_file_dialog_clicked(self):
         """
         Open a file dialog to select the mesoSPIM directory.
@@ -197,6 +227,9 @@ class StitchingWidget(QWidget):
         """
         self.image_mosaic = ImageMosaic(self.working_directory)
 
+        self.fuse_channel_dropdown.clear()
+        self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
+
         napari_data = self.image_mosaic.data_for_napari(
             self.resolution_to_display
         )
@@ -239,3 +272,65 @@ class StitchingWidget(QWidget):
                     self.add_tiles_button.setEnabled(True)
         except FileNotFoundError:
             show_warning("mesoSPIM directory not valid")
+
+    def _on_open_file_dialog_imagej_clicked(self):
+        """
+        Open a file dialog to select the FIJI path.
+        """
+        self.imagej_path = Path(
+            QFileDialog.getOpenFileName(
+                self, "Select FIJI Path", str(self.default_directory)
+            )[0]
+        )
+        self.imagej_path_text_field.setText(str(self.imagej_path))
+        self.check_imagej_path()
+
+    def _on_imagej_path_text_edited(self):
+        """
+        Update the FIJI path when the text field is edited.
+        """
+        self.imagej_path = Path(self.imagej_path_text_field.text())
+        self.check_imagej_path()
+
+    def _on_stitch_button_clicked(self):
+        """
+        Stitch the tiles in the viewer using BigStitcher.
+        """
+        self.image_mosaic.stitch(
+            self.imagej_path,
+            resolution_level=2,
+            selected_channel=self.fuse_channel_dropdown.currentText(),
+        )
+
+        napari_data = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
+
+        self.update_tiles_from_mosaic(napari_data)
+
+    def check_imagej_path(self):
+        """
+        Check if the selected ImageJ path is valid. If valid, enable the
+        stitch button. Otherwise, show a warning.
+        """
+        if self.imagej_path.exists():
+            self.stitch_button.setEnabled(True)
+        else:
+            show_warning("ImageJ path not valid")
+
+    def update_tiles_from_mosaic(
+        self, napari_data: List[Tuple[da.Array, npt.NDArray]]
+    ):
+        """
+        Update the data stored in the napari viewer for each tile based on
+        the ImageMosaic.
+
+        Parameters
+        ----------
+        napari_data: List[Tuple[da.Array, npt.NDArray]]
+            The data and position for each tile in the mosaic.
+        """
+        for data, tile_layer in zip(napari_data, self.tile_layers):
+            tile_data, tile_position = data
+            tile_layer.data = tile_data.compute()
+            tile_layer.translate = tile_position

@@ -302,7 +302,6 @@ class ImageMosaic:
             0
         ].resolution_pyramid[resolution_level]
 
-        print(downsample_x, downsample_y, downsample_z)
         assert self.xml_path is not None
         assert self.tile_config_path is not None
 
