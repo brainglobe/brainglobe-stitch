@@ -50,7 +50,7 @@ def test_run_big_stitcher_defaults(
     command = (
         f"{imagej_path} --ij2"
         f" --headless -macro {macro_path} "
-        f'"{xml_path} {tile_config_path} 0 488 4 4 4"'
+        f'"{xml_path} {tile_config_path} 0 488 4 4 1"'
     )
 
     mock_subprocess_run.assert_called_with(
