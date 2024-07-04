@@ -25,16 +25,16 @@ def run_big_stitcher(
         The path to the BigDataViewer XML file.
     tile_config_path: Path
         The path to the BigStitcher tile configuration file.
-    all_channels: bool
-        Whether to stitch based on all channels.
-    selected_channel: int
-        The channel on which to base the stitching.
-    downsample_x: int
-        The downsample factor in the x-dimension for the stitching.
-    downsample_y: int
-        The downsample factor in the y-dimension for the stitching.
-    downsample_z: int
-        The downsample factor in the z-dimension for the stitching.
+    all_channels: bool, optional
+        Whether to stitch based on all channels (default False).
+    selected_channel: int, optional
+        The channel on which to base the stitching (default 488).
+    downsample_x: int, optional
+        The downsample factor in the x-dimension for the stitching (default 4).
+    downsample_y: int, optional
+        The downsample factor in the y-dimension for the stitching (default 4).
+    downsample_z: int, optional
+        The downsample factor in the z-dimension for the stitching (default 1).
 
     Returns
     -------
