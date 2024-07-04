@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import h5py
@@ -30,6 +31,16 @@ EXPECTED_TRANSFORMS = np.array(
         [116, 244, 123, 251, 5, 115],
     ]
 )
+
+
+@pytest.fixture
+def bad_bdv_directory():
+    bad_dir = Path("./bad_directory")
+    bad_dir.mkdir()
+
+    yield bad_dir
+
+    shutil.rmtree(bad_dir)
 
 
 def test_create_pyramid_bdv_h5(naive_bdv_directory, test_data_directory):

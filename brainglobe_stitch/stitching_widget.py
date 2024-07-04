@@ -98,6 +98,7 @@ class StitchingWidget(QWidget):
         self._viewer = napari_viewer
         self.progress_bar = QProgressBar(self)
         self.image_mosaic: Optional[ImageMosaic] = None
+        self.imagej_path: Optional[Path] = None
         self.tile_layers: List[napari.layers.Image] = []
         self.resolution_to_display: int = 3
 
