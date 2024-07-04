@@ -59,9 +59,10 @@ def test_create_pyramid_bdv_h5(naive_bdv_directory, test_data_directory):
         assert progress == int(100 * num_done / num_tiles)
         num_done += 1
 
-    with h5py.File(h5_path, "r") as f_out, h5py.File(
-        test_data_directory / "test_data_bdv.h5", "r"
-    ) as f_in:
+    with (
+        h5py.File(h5_path, "r") as f_out,
+        h5py.File(test_data_directory / "test_data_bdv.h5", "r") as f_in,
+    ):
         # Check that the number of groups/datasets in the parent is unchanged
         assert len(f_out.keys()) == len(f_in.keys())
         assert len(f_out["t00000"].keys()) == len(f_in["t00000"].keys())
