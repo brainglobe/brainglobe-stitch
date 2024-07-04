@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import sleep
 from typing import Dict, List, Optional, Tuple
 
 import dask.array as da
@@ -7,9 +8,11 @@ import numpy as np
 import numpy.typing as npt
 from rich.progress import Progress
 
+from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
+    get_big_stitcher_transforms,
     get_slice_attributes,
     parse_mesospim_metadata,
 )
@@ -261,3 +264,83 @@ class ImageMosaic:
                 )
 
         return
+
+    def stitch(
+        self,
+        fiji_path: Path,
+        resolution_level: int,
+        selected_channel: str,
+    ) -> None:
+        """
+        Stitch the tiles in the image using BigStitcher.
+
+        Parameters
+        ----------
+        fiji_path: Path
+            The path to the Fiji application.
+        resolution_level: int
+            The resolution level to stitch the tiles at.
+        selected_channel: str
+            The name of the channel to stitch.
+        """
+
+        # If selected_channel is an empty string then stitch based on
+        # all channels
+        all_channels = len(selected_channel) == 0
+        channel_int = -1
+
+        # Extract the wavelength from the channel name
+        if not all_channels:
+            try:
+                channel_int = int(selected_channel.split()[0])
+            except ValueError:
+                print("Invalid channel name.")
+                raise
+
+        # Extract the downsample factors for the selected resolution level
+        downsample_z, downsample_y, downsample_x = self.tiles[
+            0
+        ].resolution_pyramid[resolution_level]
+
+        print(downsample_x, downsample_y, downsample_z)
+        assert self.xml_path is not None
+        assert self.tile_config_path is not None
+
+        result = run_big_stitcher(
+            fiji_path,
+            self.xml_path,
+            self.tile_config_path,
+            all_channels,
+            channel_int,
+            downsample_x=downsample_x,
+            downsample_y=downsample_y,
+            downsample_z=downsample_z,
+        )
+
+        big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
+
+        with open(big_stitcher_output_path, "w") as f:
+            f.write(result.stdout)
+            f.write(result.stderr)
+
+        print(result.stdout)
+
+        # Wait for the BigStitcher to write XML file
+        # Need to find a better way to do this
+        sleep(1)
+
+        self.read_big_stitcher_transforms()
+
+    def read_big_stitcher_transforms(self):
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        stitched_translations = get_big_stitcher_transforms(
+            self.xml_path, z_size, y_size, x_size
+        )
+        for tile in self.tiles:
+            # BigStitcher uses x,y,z order, switch to z,y,x order
+            stitched_position = [
+                stitched_translations[tile.id][4],
+                stitched_translations[tile.id][2],
+                stitched_translations[tile.id][0],
+            ]
+            tile.position = stitched_position
