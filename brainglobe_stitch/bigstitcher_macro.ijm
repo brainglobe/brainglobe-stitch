@@ -36,7 +36,7 @@ if (allChannels == 1) {
         "select=" + xmlPath +
         " process_angle=[All angles] process_channel=[All channels] process_illumination=[All illuminations]" +
         " process_tile=[All tiles] process_timepoint=[All Timepoints]" +
-        " method=[Phase Correlation] channels=[use Channel " + selectedChannel + " nm]" +
+        " method=[Phase Correlation] channels=[use Channel " + selectedChannel + "]" +
         " downsample_in_x=" + downSampleX +
         " downsample_in_y=" + downSampleY +
         " downsample_in_z=" + downSampleZ

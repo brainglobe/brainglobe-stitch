@@ -8,7 +8,7 @@ def run_big_stitcher(
     xml_path: Path,
     tile_config_path: Path,
     all_channels: bool = False,
-    selected_channel: int = 488,
+    selected_channel: str = "488 nm",
     downsample_x: int = 4,
     downsample_y: int = 4,
     downsample_z: int = 1,

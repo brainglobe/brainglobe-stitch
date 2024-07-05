@@ -282,9 +282,9 @@ def check_mesospim_directory(
     """
     # List all files in the directory that do not start with a period
     # But end in the correct file extension
-    xml_path = list(mesospim_directory.glob("[!.]*bdv.xml"))
+    xml_path = list(mesospim_directory.glob("[!.]*.xml"))
     meta_path = list(mesospim_directory.glob("[!.]*h5_meta.txt"))
-    h5_path = list(mesospim_directory.glob("[!.]*bdv.h5"))
+    h5_path = list(mesospim_directory.glob("[!.]*.h5"))
 
     # Check that there is exactly one file of each type
     if len(xml_path) != 1:
@@ -293,9 +293,8 @@ def check_mesospim_directory(
         )
 
     if len(meta_path) != 1:
-        raise FileNotFoundError(
-            f"Expected 1 h5_meta.txt file, found {len(meta_path)}"
-        )
+        print(f"Expected 1 h5_meta.txt file, found {len(meta_path)}")
+        meta_path = xml_path
 
     if len(h5_path) != 1:
         raise FileNotFoundError(f"Expected 1 h5 file, found {len(h5_path)}")
@@ -375,6 +374,75 @@ def get_slice_attributes(
         slice_attributes[name] = sub_dict
 
     return slice_attributes
+
+
+def get_channel_names(xml_path: Path) -> List[str]:
+    """
+    Get the channel names from a Big Data Viewer XML file.
+
+    Parameters
+    ----------
+    xml_path: Path
+        The path to the XML file.
+
+    Returns
+    -------
+    List[str]
+        A dictionary containing the channel names for each channel id.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    channels = root.findall(".//Channel")
+
+    channel_names = [""] * len(channels)
+    for channel in channels:
+        id_element = channel.find("id")
+        channel_name_element = channel.find("name")
+
+        assert id_element is not None, "No channel id tag found in XML file"
+        assert (
+            channel_name_element is not None
+        ), "No channel name tag found in XML file"
+
+        assert id_element.text is not None, "No channel id found in XML file"
+        assert (
+            channel_name_element.text is not None
+        ), "No channel name found in XML file"
+
+        channel_id = int(id_element.text)
+        channel_name = channel_name_element.text
+        channel_names[channel_id] = channel_name
+
+    return channel_names
+
+
+def get_resolution(xml_path: Path) -> Tuple[float, ...]:
+    """
+    Get the resolution of the image from a Big Data Viewer XML file.
+
+    Parameters
+    ----------
+    xml_path: Path
+        The path to the XML file.
+
+    Returns
+    -------
+    Tuple[int, int, int]
+        The resolution of the image in the z, y, and x dimensions.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    resolution_element = root.find(".//ViewSetup//voxelSize//size")
+
+    assert (
+        resolution_element is not None
+    ), "No resolution tag found in XML file"
+
+    resolution_text = resolution_element.text
+
+    assert resolution_text is not None, "No resolution found in XML file"
+
+    return tuple(map(float, resolution_text.split()))
 
 
 def get_big_stitcher_transforms(

@@ -18,6 +18,8 @@ from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
     get_big_stitcher_transforms,
+    get_channel_names,
+    get_resolution,
     get_slice_attributes,
     parse_mesospim_metadata,
     write_bdv_xml,
@@ -114,7 +116,6 @@ class ImageMosaic:
             print("Invalid mesoSPIM directory")
 
         assert self.xml_path is not None
-        assert self.meta_path is not None
         assert self.h5_path is not None
 
         self.h5_file = h5py.File(self.h5_path, "r")
@@ -145,16 +146,11 @@ class ImageMosaic:
             str(self.xml_path)[:-4] + "_tile_config.txt"
         )
 
-        self.tile_metadata = parse_mesospim_metadata(self.meta_path)
+        self.channel_names = get_channel_names(self.xml_path)
 
-        self.channel_names = []
-        idx = 0
-        while self.tile_metadata[idx]["Laser"] not in self.channel_names:
-            self.channel_names.append(self.tile_metadata[idx]["Laser"])
-            idx += 1
-
-        self.x_y_resolution = self.tile_metadata[0]["Pixelsize in um"]
-        self.z_resolution = self.tile_metadata[0]["z_stepsize"]
+        resolutions_from_metadata = get_resolution(self.xml_path)
+        self.x_y_resolution = resolutions_from_metadata[0]
+        self.z_resolution = resolutions_from_metadata[-1]
         self.num_channels = len(self.channel_names)
 
         # Each tile is a group under "t00000"
@@ -188,30 +184,35 @@ class ImageMosaic:
             for i, resolution in enumerate(resolutions):
                 tile.resolution_pyramid[i] = resolution[-1::-1]
 
-        # Don't rewrite the tile config if it already exists
-        # Need to read in stage coordinates if not writing the tile config
-        # These will be used as the initial tile positions
-        if not self.tile_config_path.exists():
-            self.write_big_stitcher_tile_config(self.meta_path)
-        else:
-            with open(self.tile_config_path, "r") as f:
-                # Skip header
-                f.readline()
-
-                for line, tile in zip(f.readlines(), self.tiles):
-                    split_line = line.split(";")[-1].strip("()\n").split(",")
-                    # BigStitcher uses x,y,z order
-                    # Switch to z,y,x order
-                    translation = [
-                        int(split_line[2]),
-                        int(split_line[1]),
-                        int(split_line[0]),
-                    ]
-                    tile.position = translation
         try:
             self.read_big_stitcher_transforms()
         except (IndexError, AssertionError, ValueError):
-            print("BigStitcher transforms not found.")
+            print("BigStitcher transforms not found, using mesoSPIM meta.txt.")
+            assert self.meta_path is not None
+            self.tile_metadata = parse_mesospim_metadata(self.meta_path)
+
+            # Don't rewrite the tile config if it already exists
+            # Need to read in stage coordinates if not writing the tile config
+            # These will be used as the initial tile positions
+            if not self.tile_config_path.exists():
+                self.write_big_stitcher_tile_config(self.meta_path)
+            else:
+                with open(self.tile_config_path, "r") as f:
+                    # Skip header
+                    f.readline()
+
+                    for line, tile in zip(f.readlines(), self.tiles):
+                        split_line = (
+                            line.split(";")[-1].strip("()\n").split(",")
+                        )
+                        # BigStitcher uses x,y,z order
+                        # Switch to z,y,x order
+                        translation = [
+                            int(split_line[2]),
+                            int(split_line[1]),
+                            int(split_line[0]),
+                        ]
+                        tile.position = translation
 
         self.calculate_overlaps()
 
@@ -294,15 +295,6 @@ class ImageMosaic:
         # If selected_channel is an empty string then stitch based on
         # all channels
         all_channels = len(selected_channel) == 0
-        channel_int = -1
-
-        # Extract the wavelength from the channel name
-        if not all_channels:
-            try:
-                channel_int = int(selected_channel.split()[0])
-            except ValueError:
-                print("Invalid channel name.")
-                raise
 
         # Extract the downsample factors for the selected resolution level
         downsample_z, downsample_y, downsample_x = self.tiles[
@@ -318,7 +310,7 @@ class ImageMosaic:
             self.xml_path,
             self.tile_config_path,
             all_channels,
-            channel_int,
+            selected_channel,
             downsample_x=downsample_x,
             downsample_y=downsample_y,
             downsample_z=downsample_z,
@@ -780,9 +772,9 @@ class ImageMosaic:
                 shape=subdivisions.shape,
             )
 
-            chunk_shape: Tuple[int, ...] = (256, 256, 256)
+            chunk_shape: Tuple[int, ...] = (128, 128, 128)
 
-            if (np.array(fused_image_shape) < 256).any():
+            if (np.array(fused_image_shape) < 128).any():
                 chunk_shape = fused_image_shape
 
             # Create the datasets for each resolution level
