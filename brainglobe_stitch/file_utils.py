@@ -378,7 +378,11 @@ def get_slice_attributes(
 
 
 def get_big_stitcher_transforms(
-    xml_path: Path, x_size: int, y_size: int, z_size: int
+    xml_path: Path,
+    x_size: int,
+    y_size: int,
+    z_size: int,
+    stitched: bool = True,
 ) -> List[List[int]]:
     """
     Get the translations for each tile from a Big Data Viewer XML file.
@@ -394,6 +398,8 @@ def get_big_stitcher_transforms(
         The size of the image in the y-dimension.
     z_size: int
         The size of the image in the z-dimension.
+    stitched: bool, optional
+        Whether the image has been stitched by BigStitcher (default True)
 
     Returns
     -------
@@ -402,13 +408,6 @@ def get_big_stitcher_transforms(
     """
     tree = ET.parse(xml_path)
     root = tree.getroot()
-
-    stitch_transforms = root.findall(
-        ".//ViewTransform/[Name='Stitching Transform']/affine"
-    )
-    assert (
-        stitch_transforms is not None
-    ), "No stitching transforms found in XML file"
 
     # Stitching Transforms are if aligning to grid is done manually
     # Translation from Tile Configuration is if aligned automatically
@@ -421,25 +420,38 @@ def get_big_stitcher_transforms(
         )
     assert grid_transforms is not None, "No grid transforms found in XML file"
 
+    if stitched:
+        stitch_transforms = root.findall(
+            ".//ViewTransform/[Name='Stitching Transform']/affine"
+        )
+        assert (
+            stitch_transforms is not None
+        ), "No stitching transforms found in XML file"
+    else:
+        stitch_transforms = None
+
     z_scale_str = root.find(".//ViewTransform/[Name='calibration']/affine")
     assert z_scale_str is not None, "No z scale found in XML file"
     assert z_scale_str.text is not None, "No z scale found in XML file"
     z_scale = float(z_scale_str.text.split()[-2])
     deltas = []
     grids = []
-    for i in range(len(stitch_transforms)):
-        delta_nums_text = stitch_transforms[i].text
-        grid_nums_text = grid_transforms[i].text
 
-        assert (
-            delta_nums_text is not None
-        ), "Error reading stitch transform from XML file"
+    for i in range(len(grid_transforms)):
+        grid_nums_text = grid_transforms[i].text
         assert (
             grid_nums_text is not None
         ), "Error reading grid transform from XML file"
-
-        delta_nums = delta_nums_text.split()
         grid_nums = grid_nums_text.split()
+
+        if stitch_transforms:
+            delta_nums_text = stitch_transforms[i].text
+            assert (
+                delta_nums_text is not None
+            ), "Error reading stitch transform from XML file"
+            delta_nums = delta_nums_text.split()
+        else:
+            delta_nums = [0] * 12
 
         curr_delta = [
             round(float(delta_nums[3])),
