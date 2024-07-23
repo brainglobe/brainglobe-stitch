@@ -1,10 +1,16 @@
 args = getArgument();
 args = split(args, " ");
 xml_path = args[0];
-selected_channel = args[1];
+selected_channel_combo = args[1];
 down_sampleX = args[2];
 down_sampleY = args[3];
 down_sampleZ = args[4];
+
+selected_channel_array = split(selected_channel_combo, "_");
+selected_channel = selected_channel_array[0];
+
+for (i = 1; i < selected_channel_array.length; i++)
+    selected_channel = selected_channel + " " + selected_channel_array[i];
 
 print("Calculating pairwise shifts");
 
