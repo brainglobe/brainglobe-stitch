@@ -3,10 +3,17 @@ args = split(args, " ");
 xml_path = args[0];
 tile_path = args[1];
 all_channels = args[2];
-selected_channel = args[3];
+selected_channel_combo = args[3];
 down_sampleX = args[4];
 down_sampleY = args[5];
 down_sampleZ = args[6];
+
+selected_channel_array = split(selected_channel_combo, "_");
+selected_channel = selected_channel_array[0];
+
+for (i = 1; i < selected_channel_array.length; i++)
+    selected_channel = selected_channel + " " + selected_channel_array[i];
+
 
 print("Stitching " + xml_path);
 print("Loading TileConfiguration from " + tile_path)
