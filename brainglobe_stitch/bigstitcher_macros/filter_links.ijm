@@ -1,0 +1,9 @@
+args = getArgument();
+args = split(args, " ");
+xmlPath = args[0];
+tilePath = args[1];
+allChannels = args[2];
+selectedChannel = args[3];
+downSampleX = args[4];
+downSampleY = args[5];
+downSampleZ = args[6];

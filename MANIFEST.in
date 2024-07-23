@@ -3,11 +3,11 @@ include README.md
 include .napari-hub/DESCRIPTION.md
 include .napari-hub/config.yml
 include brainglobe_stitch/napari.yaml
-include brainglobe_stitch/bigstitcher_macro.ijm
 exclude .pre-commit-config.yaml
 exclude *.ipynb
 
 recursive-include brainglobe_stitch *.py
+recursive-include brainglobe_stitch *.ijm
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
