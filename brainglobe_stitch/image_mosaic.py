@@ -14,9 +14,7 @@ from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
 
 from brainglobe_stitch.big_stitcher_bridge import (
-    load_tile_config_file,
     run_big_stitcher,
-    write_big_stitcher_log,
 )
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
@@ -328,13 +326,9 @@ class ImageMosaic:
 
         big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
 
-        if self.tile_config_path.exists():
-            result = load_tile_config_file(
-                fiji_path, self.xml_path, self.tile_config_path
-            )
-            write_big_stitcher_log(
-                result, big_stitcher_output_path, "Loading tile config"
-            )
+        # Refresh the log file
+        if big_stitcher_output_path.exists():
+            big_stitcher_output_path.unlink()
 
         run_big_stitcher(
             fiji_path,

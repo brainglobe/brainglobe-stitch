@@ -14,9 +14,9 @@ def run_big_stitcher(
     downsample_z: int = 1,
     min_r: float = 0.7,
     max_r: float = 1.0,
-    max_shift_x: float = 100.0,
-    max_shift_y: float = 100.0,
-    max_shift_z: float = 100.0,
+    max_shift_x: float = 200.0,
+    max_shift_y: float = 200.0,
+    max_shift_z: float = 200.0,
 ) -> None:
     """
     Run the BigStitcher ImageJ macro in headless mode. Output is captured
@@ -65,6 +65,10 @@ def run_big_stitcher(
     subprocess.CalledProcessError
         If the subprocess returns a non-zero exit status.
     """
+    if tile_config_path.exists():
+        result = load_tile_config_file(fiji_path, xml_path, tile_config_path)
+        write_big_stitcher_log(result, big_stitcher_log, "Loading tile config")
+
     result = calculate_pairwise_links(
         fiji_path,
         xml_path,
