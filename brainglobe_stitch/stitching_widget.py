@@ -68,7 +68,7 @@ class StitchingWidget(QWidget):
         self.image_mosaic: ImageMosaic | None = None
         self.imagej_path: Path | None = None
         self.tile_layers: List[napari.layers.Image] = []
-        self.resolution_to_display: int = 3
+        self.resolution_to_display: int = 4
 
         self.setLayout(QVBoxLayout())
 
@@ -255,6 +255,7 @@ class StitchingWidget(QWidget):
         self.image_mosaic = ImageMosaic(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
+        self.fuse_channel_dropdown.addItem("All Channels")
         self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
 
         napari_data = self.image_mosaic.data_for_napari(

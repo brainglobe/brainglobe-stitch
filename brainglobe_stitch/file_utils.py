@@ -1,7 +1,7 @@
 import copy
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import dask.array as da
 import h5py
@@ -266,7 +266,7 @@ def write_bdv_xml(
 
 def check_mesospim_directory(
     mesospim_directory: Path,
-) -> Tuple[Path, Path, Path]:
+) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """
     Check that the mesoSPIM directory contains the expected files.
 
@@ -282,24 +282,32 @@ def check_mesospim_directory(
     """
     # List all files in the directory that do not start with a period
     # But end in the correct file extension
-    xml_path = list(mesospim_directory.glob("[!.]*.xml"))
-    meta_path = list(mesospim_directory.glob("[!.]*h5_meta.txt"))
-    h5_path = list(mesospim_directory.glob("[!.]*.h5"))
+    xml_path_list = list(mesospim_directory.glob("[!.]*.xml"))
+    meta_path_list = list(mesospim_directory.glob("[!.]*h5_meta.txt"))
+    h5_path_list = list(mesospim_directory.glob("[!.]*.h5"))
 
     # Check that there is exactly one file of each type
-    if len(xml_path) != 1:
+    if len(xml_path_list) != 1:
         raise FileNotFoundError(
-            f"Expected 1 bdv.xml file, found {len(xml_path)}"
+            f"Expected 1 bdv.xml file, found {len(xml_path_list)}"
         )
 
-    if len(meta_path) != 1:
-        print(f"Expected 1 h5_meta.txt file, found {len(meta_path)}")
-        meta_path = xml_path
+    xml_path = xml_path_list[0]
 
-    if len(h5_path) != 1:
-        raise FileNotFoundError(f"Expected 1 h5 file, found {len(h5_path)}")
+    if len(meta_path_list) != 1:
+        print(f"Expected 1 h5_meta.txt file, found {len(meta_path_list)}")
+        meta_path = None
+    else:
+        meta_path = meta_path_list[0]
 
-    return xml_path[0], meta_path[0], h5_path[0]
+    if len(h5_path_list) != 1:
+        raise FileNotFoundError(
+            f"Expected 1 h5 file, found {len(h5_path_list)}"
+        )
+
+    h5_path = h5_path_list[0]
+
+    return xml_path, meta_path, h5_path
 
 
 def write_tiff(

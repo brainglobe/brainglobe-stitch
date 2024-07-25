@@ -20,3 +20,6 @@ run("Filter pairwise shifts ...",
     " max_shift_in_z=" + max_shift_in_z +
     " max_displacement=0"
 );
+
+print("Done");
+eval("script", "System.exit(0);");

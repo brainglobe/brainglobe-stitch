@@ -13,7 +13,11 @@ from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
 
-from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
+from brainglobe_stitch.big_stitcher_bridge import (
+    load_tile_config_file,
+    run_big_stitcher,
+    write_big_stitcher_log,
+)
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
@@ -158,6 +162,7 @@ class ImageMosaic:
         # Names aren't always contiguous, e.g. s00, s01, s04, s05 is valid
         tile_group = self.h5_file["t00000"]
         self.tile_names = list(tile_group.keys())
+        self.tile_names = sorted(self.tile_names, key=lambda x: int(x[1:]))
         slice_attributes = get_slice_attributes(self.xml_path, self.tile_names)
 
         self.tiles = []
@@ -184,11 +189,8 @@ class ImageMosaic:
             for i, resolution in enumerate(resolutions):
                 tile.resolution_pyramid[i] = resolution[-1::-1]
 
-        try:
-            self.read_big_stitcher_transforms()
-        except (IndexError, AssertionError, ValueError):
-            print("BigStitcher transforms not found, using mesoSPIM meta.txt.")
-            assert self.meta_path is not None
+        if self.meta_path:
+            print("Using mesoSPIM meta.txt.")
             self.tile_metadata = parse_mesospim_metadata(self.meta_path)
 
             # Don't rewrite the tile config if it already exists
@@ -213,6 +215,11 @@ class ImageMosaic:
                             int(split_line[0]),
                         ]
                         tile.position = translation
+        else:
+            try:
+                self.read_big_stitcher_transforms()
+            except (IndexError, AssertionError, ValueError):
+                print("Error reading transforms from big_stitcher")
 
         self.calculate_overlaps()
 
@@ -278,6 +285,11 @@ class ImageMosaic:
         fiji_path: Path,
         resolution_level: int,
         selected_channel: str,
+        min_r: float = 0.7,
+        max_r: float = 1.0,
+        max_shift_x: float = 100.0,
+        max_shift_y: float = 100.0,
+        max_shift_z: float = 100.0,
     ) -> None:
         """
         Stitch the tiles in the image using BigStitcher.
@@ -290,39 +302,55 @@ class ImageMosaic:
             The resolution level to stitch the tiles at.
         selected_channel: str
             The name of the channel to stitch.
+        min_r: float
+            The minimum correlation coefficient for a link to be accepted.
+            Default is 0.7.
+        max_r: float
+            The maximum Pearson coefficient for a link to be accepted.
+            Default is 1.0.
+        max_shift_x: float
+            The maximum shift in the x-dimension for a link to be accepted.
+            Default is 100.0.
+        max_shift_y: float
+            The maximum shift in the y-dimension for a link to be accepted.
+            Default is 100.0.
+        max_shift_z: float
+            The maximum shift in the z-dimension for a link to be accepted.
+            Default is 100.0.
         """
-
-        # If selected_channel is an empty string then stitch based on
-        # all channels
-        all_channels = len(selected_channel) == 0
-
         # Extract the downsample factors for the selected resolution level
         downsample_z, downsample_y, downsample_x = self.tiles[
             0
         ].resolution_pyramid[resolution_level]
 
-        print(downsample_x, downsample_y, downsample_z)
         assert self.xml_path is not None
         assert self.tile_config_path is not None
 
-        result = run_big_stitcher(
+        big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
+
+        if self.tile_config_path.exists():
+            result = load_tile_config_file(
+                fiji_path, self.xml_path, self.tile_config_path
+            )
+            write_big_stitcher_log(
+                result, big_stitcher_output_path, "Loading tile config"
+            )
+
+        run_big_stitcher(
             fiji_path,
             self.xml_path,
             self.tile_config_path,
-            all_channels,
-            selected_channel,
+            big_stitcher_log=big_stitcher_output_path,
+            selected_channel=selected_channel,
             downsample_x=downsample_x,
             downsample_y=downsample_y,
             downsample_z=downsample_z,
+            min_r=min_r,
+            max_r=max_r,
+            max_shift_x=max_shift_x,
+            max_shift_y=max_shift_y,
+            max_shift_z=max_shift_z,
         )
-
-        big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
-
-        with open(big_stitcher_output_path, "w") as f:
-            f.write(result.stdout)
-            f.write(result.stderr)
-
-        print(result.stdout)
 
         # Wait for the BigStitcher to write XML file
         # Need to find a better way to do this
@@ -335,7 +363,7 @@ class ImageMosaic:
     def read_big_stitcher_transforms(self):
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         stitcher_translations = get_big_stitcher_transforms(
-            self.xml_path, z_size, y_size, x_size
+            self.xml_path, x_size=x_size, y_size=y_size, z_size=z_size
         )
         for tile in self.tiles:
             # BigStitcher uses x,y,z order, switch to z,y,x order
