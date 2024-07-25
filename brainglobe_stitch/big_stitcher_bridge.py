@@ -30,8 +30,8 @@ def run_big_stitcher(
         The path to the BigDataViewer XML file.
     tile_config_path: Path
         The path to the BigStitcher tile configuration file.
-    all_channels: bool
-        Whether to stitch based on all channels.
+    big_stitcher_log: Path
+        The path to the log file for the BigStitcher run.
     selected_channel: int
         The channel on which to base the stitching.
     downsample_x: int
@@ -369,7 +369,7 @@ def write_big_stitcher_log(
     task_name: str
         The name of the task being run.
     """
-    with open(output_file, "w+") as f:
+    with open(output_file, "a") as f:
         f.write(f"{task_name}\n")
         f.write(f"Command: {result.args}\n")
         f.write(f"Return code: {result.returncode}\n")
