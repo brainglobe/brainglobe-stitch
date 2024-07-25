@@ -490,11 +490,11 @@ class ImageMosaic:
         # Adjust the intensity of each tile based on the scale factors
         for tile in self.tiles:
             if self.scale_factors[tile.id] != 1.0:
-                tile.data_pyramid[resolution_level] = np.multiply(
+                tile.data_pyramid[resolution_level] = da.multiply(
                     tile.data_pyramid[resolution_level],
                     self.scale_factors[tile.id],
                     dtype=np.float16,
-                ).astype(np.uint16)
+                ).astype(tile.data_pyramid[resolution_level].dtype)
 
         self.intensity_adjusted[resolution_level] = True
 
@@ -516,6 +516,7 @@ class ImageMosaic:
 
         for tile_i in self.tiles:
             # Iterate through the neighbours of each tile
+            print(f"Calculating scale factors for tile {tile_i.id}")
             for neighbour_id in tile_i.neighbours:
                 tile_j = self.tiles[neighbour_id]
                 overlap = self.overlaps[(tile_i.id, tile_j.id)]
@@ -526,18 +527,18 @@ class ImageMosaic:
                 )
 
                 # Calculate the percentile intensity of the overlapping data
-                median_i = np.percentile(i_overlap.ravel(), percentile)
-                median_j = np.percentile(j_overlap.ravel(), percentile)
+                median_i = da.percentile(i_overlap.ravel(), percentile)
+                median_j = da.percentile(j_overlap.ravel(), percentile)
 
                 curr_scale_factor = (median_i / median_j).compute()
                 scale_factors[tile_i.id][tile_j.id] = curr_scale_factor[0]
 
                 # Adjust the tile intensity based on the scale factor
-                tile_j.data_pyramid[resolution_level] = np.multiply(
+                tile_j.data_pyramid[resolution_level] = da.multiply(
                     tile_j.data_pyramid[resolution_level],
                     curr_scale_factor,
                     dtype=np.float16,
-                ).astype(np.uint16)
+                ).astype(tile_j.data_pyramid[resolution_level].dtype)
 
         self.intensity_adjusted[resolution_level] = True
         # Calculate the product of the scale factors for each tile's neighbours
@@ -580,6 +581,7 @@ class ImageMosaic:
         output_file_name: str = "fused.zarr",
         normalise_intensity: bool = False,
         interpolate: bool = False,
+        resolution_level: int = 3,
     ) -> None:
         """
         Fuse the tiles into a single image and save it to the output file.
@@ -592,25 +594,52 @@ class ImageMosaic:
             Whether to normalise the intensity of the image before fusing.
         interpolate: bool
             Whether to interpolate the overlaps before fusing.
+        resolution_level: int
+            The resolution level to fuse the tiles at.
         """
         output_path = self.directory / output_file_name
+        downsample_z, downsample_y, downsample_x = self.tiles[
+            0
+        ].resolution_pyramid[resolution_level]
 
-        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        z_size, y_size, x_size = (
+            self.tiles[resolution_level].data_pyramid[0].shape
+        )
         # Calculate the shape of the fused image
         fused_image_shape: Tuple[int, ...] = (
-            max([tile.position[0] for tile in self.tiles]) + z_size,
-            max([tile.position[1] for tile in self.tiles]) + y_size,
-            max([tile.position[2] for tile in self.tiles]) + x_size,
+            (
+                max([tile.position[0] for tile in self.tiles])
+                + z_size
+                + int(resolution_level > 0)
+            )
+            // downsample_z,
+            (
+                max([tile.position[1] for tile in self.tiles])
+                + y_size
+                + int(resolution_level > 0)
+            )
+            // downsample_y,
+            (
+                max([tile.position[2] for tile in self.tiles])
+                + x_size
+                + int(resolution_level > 0)
+            )
+            // downsample_x,
         )
 
         if normalise_intensity:
-            self.normalise_intensity(0, 80)
+            self.normalise_intensity(resolution_level, 80)
 
         if interpolate:
-            self.interpolate_overlaps(0)
+            self.interpolate_overlaps(resolution_level)
 
         if output_path.suffix == ".zarr":
-            self._fuse_to_zarr(output_path, fused_image_shape)
+            self._fuse_to_zarr(
+                output_path,
+                fused_image_shape,
+                pyramid_depth=4,
+                resolution_level=resolution_level,
+            )
         elif output_path.suffix == ".h5":
             self._fuse_to_bdv_h5(output_path, fused_image_shape)
         elif output_path.suffix in [".tif", ".tiff"]:
@@ -620,7 +649,8 @@ class ImageMosaic:
         self,
         output_path: Path,
         fused_image_shape: Tuple[int, ...],
-        pyramid_depth: int = 6,
+        pyramid_depth: int = 5,
+        resolution_level: int = 0,
     ) -> None:
         """
         Fuse the tiles in the ImageMosaic into a single image and save it as a
@@ -632,8 +662,16 @@ class ImageMosaic:
             The path of the output file.
         fused_image_shape: Tuple[int, ...]
             The shape of the fused image.
+        pyramid_depth: int
+            The depth of the image pyramid.
+            Default is 6.
+        resolution_level: int
+            The resolution level to fuse the tiles at.
+            Default is 0.
         """
-        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        z_size, y_size, x_size = (
+            self.tiles[0].data_pyramid[resolution_level].shape
+        )
 
         # Default chunk shape is (256, 256, 256) for the highest resolution
         chunk_shape: Tuple[int, ...] = (256, 256, 256)
@@ -663,19 +701,23 @@ class ImageMosaic:
 
         # Place the tiles in reverse order of acquisition
         for tile in self.tiles[-1::-1]:
+            scaled_translation = np.round(
+                np.array(tile.position)
+                / tile.resolution_pyramid[resolution_level]
+            ).astype(np.int32)
             if self.num_channels > 1:
                 fused_image_store[
                     tile.channel_id,
-                    tile.position[0] : tile.position[0] + z_size,
-                    tile.position[1] : tile.position[1] + y_size,
-                    tile.position[2] : tile.position[2] + x_size,
-                ] = tile.data_pyramid[0].compute()
+                    scaled_translation[0] : scaled_translation[0] + z_size,
+                    scaled_translation[1] : scaled_translation[1] + y_size,
+                    scaled_translation[2] : scaled_translation[2] + x_size,
+                ] = tile.data_pyramid[resolution_level].compute()
             else:
                 fused_image_store[
-                    tile.position[0] : tile.position[0] + z_size,
-                    tile.position[1] : tile.position[1] + y_size,
-                    tile.position[2] : tile.position[2] + x_size,
-                ] = tile.data_pyramid[0].compute()
+                    scaled_translation[0] : scaled_translation[0] + z_size,
+                    scaled_translation[1] : scaled_translation[1] + y_size,
+                    scaled_translation[2] : scaled_translation[2] + x_size,
+                ] = tile.data_pyramid[resolution_level].compute()
 
             print(f"Done tile {tile.id}")
 

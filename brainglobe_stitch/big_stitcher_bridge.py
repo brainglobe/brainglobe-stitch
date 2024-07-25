@@ -187,7 +187,7 @@ def calculate_pairwise_links(
 
     fiji_path = resolve_fiji_path(fiji_path)
 
-    if selected_channel == "All channels":
+    if selected_channel == "All Channels":
         stitch_macro_path = (
             macro_directory / "calculate_pairwise_all_channel.ijm"
         )

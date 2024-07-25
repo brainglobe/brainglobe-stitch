@@ -268,6 +268,10 @@ class StitchingWidget(QWidget):
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
 
+        self.fuse_button.setEnabled(True)
+        self.adjust_intensity_button.setEnabled(True)
+        self.interpolate_button.setEnabled(True)
+
     def _set_tile_layers(self, tile_layer: napari.layers.Image):
         tile_layer = self._viewer.add_layer(tile_layer)
         self.tile_layers.append(tile_layer)
@@ -284,10 +288,6 @@ class StitchingWidget(QWidget):
         )
 
         self.update_tiles_from_mosaic(napari_data)
-
-        self.fuse_button.setEnabled(True)
-        self.adjust_intensity_button.setEnabled(True)
-        self.interpolate_button.setEnabled(True)
 
     def _on_adjust_intensity_button_clicked(self):
         self.image_mosaic.normalise_intensity(
