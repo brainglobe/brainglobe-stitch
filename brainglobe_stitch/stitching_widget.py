@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import dask.array as da
 import h5py
 import napari.layers
+import numpy as np
 import numpy.typing as npt
 from brainglobe_utils.qtpy.logo import header_widget
 from napari.qt.threading import create_worker
@@ -33,7 +34,7 @@ from brainglobe_stitch.image_mosaic import ImageMosaic
 
 
 def add_tiles_from_mosaic(
-    napari_data: List[Tuple[da.Array, npt.NDArray]], tile_names: List[str]
+    napari_data: List[Tuple[da.Array, npt.NDArray]], image_mosaic: ImageMosaic
 ):
     """
     Add tiles to the napari viewer from the ImageMosaic.
@@ -46,13 +47,36 @@ def add_tiles_from_mosaic(
         The list of tile names.
     """
 
-    for data, tile_name in zip(napari_data, tile_names):
+    middle_slice = napari_data[0][0].shape[0] // 2
+    thresholds: Dict[str, List] = dict(
+        (channel, []) for channel in image_mosaic.channel_names
+    )
+
+    for data, tile in zip(napari_data, image_mosaic.tiles):
+        tile_data, _ = data
+        curr_threshold = np.percentile(tile_data[middle_slice].ravel(), 98)[0]
+        if not tile.channel_name:
+            raise ValueError(f"Channel name not found for tile {tile.name}")
+
+        thresholds[tile.channel_name].append(curr_threshold)
+
+    final_thresholds = dict(
+        (channel, np.max(thresholds[channel])) for channel in thresholds
+    )
+
+    for data, tile_name, tile in zip(
+        napari_data, image_mosaic.tile_names, image_mosaic.tiles
+    ):
+        channel_name = tile.channel_name
+        if not channel_name:
+            raise ValueError(f"Channel name not found for tile {tile.name}")
+
         tile_data, tile_position = data
         tile_layer = napari.layers.Image(
             tile_data.compute(),
             name=tile_name,
             blending="translucent",
-            contrast_limits=[0, 4000],
+            contrast_limits=[0, final_thresholds[channel_name]],
             multiscale=False,
         )
         tile_layer.translate = tile_position
@@ -263,7 +287,7 @@ class StitchingWidget(QWidget):
         )
 
         worker = create_worker(
-            add_tiles_from_mosaic, napari_data, self.image_mosaic.tile_names
+            add_tiles_from_mosaic, napari_data, self.image_mosaic
         )
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
