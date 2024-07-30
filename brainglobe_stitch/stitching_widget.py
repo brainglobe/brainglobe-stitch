@@ -47,8 +47,12 @@ def add_tiles_from_mosaic(
 
     for data, tile in zip(napari_data, image_mosaic.tiles):
         tile_data, _ = data
-        curr_threshold = np.percentile(tile_data[middle_slice].ravel(), 99)[0]
-        thresholds.get(tile.channel_name, []).append(curr_threshold)
+        curr_threshold = np.percentile(
+            tile_data[middle_slice].ravel(), 99
+        ).compute()[0]
+        threshold_list = thresholds.get(tile.channel_name, [])
+        threshold_list.append(curr_threshold)
+        thresholds[tile.channel_name] = threshold_list
 
     final_thresholds: Dict[str, float] = dict(
         (channel, np.max(thresholds.get(channel))) for channel in thresholds

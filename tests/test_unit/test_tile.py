@@ -24,6 +24,6 @@ def test_tile_init():
     assert len(tile.data_pyramid) == 0
     assert len(tile.resolution_pyramid) == 0
     assert tile.channel_id == channel_id
-    assert tile.channel_name is None
+    assert tile.channel_name == ""
     assert tile.illumination_id == illumination_id
     assert tile.angle == angle
