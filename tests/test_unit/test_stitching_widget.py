@@ -259,7 +259,10 @@ def test_check_imagej_path_invalid(stitching_widget, mocker):
     mock_show_warning = mocker.patch(
         "brainglobe_stitch.stitching_widget.show_warning"
     )
-    error_message = "ImageJ path not valid"
+    error_message = (
+        "ImageJ path not valid. "
+        "Please select a valid path to the imageJ executable."
+    )
 
     stitching_widget.check_imagej_path()
 

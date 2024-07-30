@@ -330,6 +330,10 @@ class StitchingWidget(QWidget):
         """
         Stitch the tiles in the viewer using BigStitcher.
         """
+        if self.image_mosaic is None:
+            show_warning("Open a mesoSPIM directory prior to stitching")
+            return
+
         self.image_mosaic.stitch(
             self.imagej_path,
             resolution_level=2,
@@ -352,7 +356,10 @@ class StitchingWidget(QWidget):
         if self.imagej_path.is_file():
             self.stitch_button.setEnabled(True)
         else:
-            show_warning("ImageJ path not valid")
+            show_warning(
+                "ImageJ path not valid. "
+                "Please select a valid path to the imageJ executable."
+            )
 
     def update_tiles_from_mosaic(
         self, napari_data: List[Tuple[da.Array, npt.NDArray]]
