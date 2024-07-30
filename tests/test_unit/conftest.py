@@ -1,3 +1,4 @@
+import platform
 import shutil
 from pathlib import Path
 
@@ -61,3 +62,13 @@ def bdv_directory_function_level():
     yield test_dir
 
     shutil.rmtree(test_dir)
+
+
+@pytest.fixture
+def imagej_path():
+    if platform.system() == "Windows":
+        return Path.home() / "Fiji.app/ImageJ-win64.exe"
+    elif platform.system() == "Darwin":
+        return Path.home() / "Fiji.app/Contents/MacOS/ImageJ-macosx"
+    else:
+        return Path.home() / "Fiji.app/ImageJ-linux64"

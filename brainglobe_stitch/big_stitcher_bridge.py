@@ -19,21 +19,21 @@ def run_big_stitcher(
 
     Parameters
     ----------
-    imagej_path: Path
+    imagej_path : Path
         The path to the ImageJ executable.
-    xml_path: Path
+    xml_path : Path
         The path to the BigDataViewer XML file.
-    tile_config_path: Path
+    tile_config_path : Path
         The path to the BigStitcher tile configuration file.
-    all_channels: bool, optional
+    all_channels : bool, optional
         Whether to stitch based on all channels (default False).
-    selected_channel: int, optional
+    selected_channel : int, optional
         The channel on which to base the stitching (default 488).
-    downsample_x: int, optional
+    downsample_x : int, optional
         The downsample factor in the x-dimension for the stitching (default 4).
-    downsample_y: int, optional
+    downsample_y : int, optional
         The downsample factor in the y-dimension for the stitching (default 4).
-    downsample_z: int, optional
+    downsample_z : int, optional
         The downsample factor in the z-dimension for the stitching (default 1).
 
     Returns
@@ -50,16 +50,14 @@ def run_big_stitcher(
         Path(__file__).resolve().parent / "bigstitcher_macro.ijm"
     )
 
-    platform = system()
-
-    if platform.startswith("Darwin"):
+    if system().startswith("Darwin"):
         imagej_path = imagej_path / "Contents/MacOS/ImageJ-macosx"
 
     command = (
-        f"{imagej_path} --ij2"
-        f" --headless -macro {stitch_macro_path} "
-        f'"{xml_path} {tile_config_path} {int(all_channels)}'
-        f' {selected_channel} {downsample_x} {downsample_y} {downsample_z}"'
+        f"{imagej_path} --ij2 "
+        f"--headless -macro {stitch_macro_path} "
+        f'"{xml_path} {tile_config_path} {int(all_channels)} '
+        f'{selected_channel} {downsample_x} {downsample_y} {downsample_z}"'
     )
 
     result = subprocess.run(

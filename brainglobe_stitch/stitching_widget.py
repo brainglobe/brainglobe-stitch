@@ -1,14 +1,15 @@
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import dask.array as da
 import h5py
 import napari
+import numpy as np
 import numpy.typing as npt
 from brainglobe_utils.qtpy.logo import header_widget
 from napari import Viewer
 from napari.qt.threading import create_worker
-from napari.utils.notifications import show_warning
+from napari.utils.notifications import show_info, show_warning
 from qtpy.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -29,7 +30,7 @@ from brainglobe_stitch.image_mosaic import ImageMosaic
 
 
 def add_tiles_from_mosaic(
-    napari_data: List[Tuple[da.Array, npt.NDArray]], tile_names: List[str]
+    napari_data: List[Tuple[da.Array, npt.NDArray]], image_mosaic: ImageMosaic
 ):
     """
     Add tiles to the napari viewer from the ImageMosaic.
@@ -38,17 +39,31 @@ def add_tiles_from_mosaic(
     ------------
     napari_data : List[Tuple[da.Array, npt.NDArray]]
         The data and position for each tile in the mosaic.
-    tile_names : List[str]
-        The list of tile names.
+    image_mosaic : ImageMosaic
+        The ImageMosaic object containing the data for the tiles.
     """
+    middle_slice = napari_data[0][0].shape[0] // 2
+    thresholds: Dict[str, List[float]] = {}
 
-    for data, tile_name in zip(napari_data, tile_names):
+    for data, tile in zip(napari_data, image_mosaic.tiles):
+        tile_data, _ = data
+        curr_threshold = np.percentile(tile_data[middle_slice].ravel(), 99)[0]
+        thresholds.get(tile.channel_name, []).append(curr_threshold)
+
+    final_thresholds: Dict[str, float] = dict(
+        (channel, np.max(thresholds.get(channel))) for channel in thresholds
+    )
+
+    for data, tile_name, tile in zip(
+        napari_data, image_mosaic.tile_names, image_mosaic.tiles
+    ):
+        channel_name = tile.channel_name
         tile_data, tile_position = data
         tile_layer = napari.layers.Image(
             tile_data.compute(),
             name=tile_name,
             blending="translucent",
-            contrast_limits=[0, 4000],
+            contrast_limits=[0, final_thresholds[channel_name]],
             multiscale=False,
         )
         tile_layer.translate = tile_position
@@ -182,7 +197,7 @@ class StitchingWidget(QWidget):
             self.open_file_dialog_imagej
         )
 
-        self.layout().addWidget(QLabel("Select ImageJ path:"))
+        self.layout().addWidget(QLabel("Path to ImageJ executable:"))
         self.layout().addWidget(self.select_imagej_path)
 
         self.fuse_channel_dropdown = QComboBox(parent=self)
@@ -250,7 +265,7 @@ class StitchingWidget(QWidget):
         )
 
         worker = create_worker(
-            add_tiles_from_mosaic, napari_data, self.image_mosaic.tile_names
+            add_tiles_from_mosaic, napari_data, self.image_mosaic
         )
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
@@ -317,6 +332,8 @@ class StitchingWidget(QWidget):
             selected_channel=self.fuse_channel_dropdown.currentText(),
         )
 
+        show_info("Stitching complete")
+
         napari_data = self.image_mosaic.data_for_napari(
             self.resolution_to_display
         )
@@ -328,7 +345,7 @@ class StitchingWidget(QWidget):
         Check if the selected ImageJ path is valid. If valid, enable the
         stitch button. Otherwise, show a warning.
         """
-        if self.imagej_path.exists():
+        if self.imagej_path.is_file():
             self.stitch_button.setEnabled(True)
         else:
             show_warning("ImageJ path not valid")
@@ -342,7 +359,7 @@ class StitchingWidget(QWidget):
 
         Parameters
         ----------
-        napari_data: List[Tuple[da.Array, npt.NDArray]]
+        napari_data : List[Tuple[da.Array, npt.NDArray]]
             The data and position for each tile in the mosaic.
         """
         for data, tile_layer in zip(napari_data, self.tile_layers):

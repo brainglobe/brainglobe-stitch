@@ -42,7 +42,9 @@ def test_run_big_stitcher_defaults(
 
     run_big_stitcher(imagej_path, xml_path, tile_config_path)
 
-    macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
+    # Expected path to the ImageJ macro
+    # Should be in the root of the package
+    macro_path = files("brainglobe_stitch") / "bigstitcher_macro.ijm"
 
     if test_platform == "Darwin":
         imagej_path = IMAGEJ_PATH_MAC_CHECK

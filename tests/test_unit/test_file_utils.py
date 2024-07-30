@@ -21,14 +21,14 @@ PIXEL_SIZE_XY = 4.08
 PIXEL_SIZE_Z = 5.0
 EXPECTED_TRANSFORMS = np.array(
     [
-        [2, 130, 4, 132, 3, 113],
-        [0, 128, 120, 248, 2, 112],
-        [2, 130, 4, 132, 3, 113],
-        [0, 128, 120, 248, 2, 112],
-        [118, 246, 7, 135, 6, 116],
-        [116, 244, 123, 251, 5, 115],
-        [118, 246, 7, 135, 6, 116],
-        [116, 244, 123, 251, 5, 115],
+        [3, 4, 2],
+        [2, 120, 0],
+        [3, 4, 2],
+        [2, 120, 0],
+        [6, 7, 118],
+        [5, 123, 116],
+        [6, 7, 118],
+        [5, 123, 116],
     ]
 )
 
@@ -191,6 +191,6 @@ def test_get_slice_attributes(naive_bdv_directory):
 def test_get_big_stitcher_transforms(naive_bdv_directory):
     xml_path = naive_bdv_directory / "test_data_bdv.xml"
 
-    transforms = get_big_stitcher_transforms(xml_path, 128, 128, 110)
+    transforms = get_big_stitcher_transforms(xml_path)
 
     assert np.equal(transforms, EXPECTED_TRANSFORMS).all()

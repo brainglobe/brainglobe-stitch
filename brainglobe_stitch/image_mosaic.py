@@ -83,7 +83,7 @@ class ImageMosaic:
 
         Parameters
         ----------
-        resolution_level: int
+        resolution_level : int
             The resolution level to get the data for.
 
         Returns
@@ -223,7 +223,7 @@ class ImageMosaic:
 
         Parameters
         ----------
-        meta_file_name: Path
+        meta_file_name : Path
             The path to the mesoSPIM metadata file.
         """
         # Remove .h5_meta.txt from the file name
@@ -276,11 +276,11 @@ class ImageMosaic:
 
         Parameters
         ----------
-        fiji_path: Path
+        fiji_path : Path
             The path to the Fiji application.
-        resolution_level: int
+        resolution_level : int
             The resolution level to stitch the tiles at.
-        selected_channel: str
+        selected_channel : str
             The name of the channel to stitch.
         """
 
@@ -294,8 +294,7 @@ class ImageMosaic:
             try:
                 channel_int = int(selected_channel.split()[0])
             except ValueError:
-                print("Invalid channel name.")
-                raise
+                raise ValueError("Invalid channel name.")
 
         # Extract the downsample factors for the selected resolution level
         downsample_z, downsample_y, downsample_x = self.tiles[
@@ -336,16 +335,8 @@ class ImageMosaic:
         Read the BigStitcher transforms from the XML file and update the tile
         positions accordingly.
         """
-        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         assert self.xml_path is not None
-        stitched_translations = get_big_stitcher_transforms(
-            self.xml_path, z_size, y_size, x_size
-        )
+        stitched_translations = get_big_stitcher_transforms(self.xml_path)
         for tile in self.tiles:
-            # BigStitcher uses x,y,z order, switch to z,y,x order
-            stitched_position = [
-                stitched_translations[tile.id][4],
-                stitched_translations[tile.id][2],
-                stitched_translations[tile.id][0],
-            ]
+            stitched_position = stitched_translations[tile.id]
             tile.position = stitched_position
