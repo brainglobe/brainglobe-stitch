@@ -1,6 +1,6 @@
-import platform
 import shutil
 from pathlib import Path
+from platform import system
 
 import pooch
 import pytest
@@ -96,9 +96,9 @@ def bdv_directory_function_level():
 
 @pytest.fixture(scope="module")
 def imagej_path():
-    if platform.system() == "Windows":
+    if system() == "Windows":
         return Path.home() / "Fiji.app/ImageJ-win64.exe"
-    elif platform.system() == "Darwin":
+    elif system() == "Darwin":
         return Path.home() / "Fiji.app"
     else:
         return Path.home() / "Fiji.app/ImageJ-linux64"
@@ -151,6 +151,12 @@ def test_constants(imagej_path):
         "PIXEL_SIZE_XY": 4.08,
         "PIXEL_SIZE_Z": 5.0,
         "MOCK_IMAGEJ_PATH": imagej_path,
+        # The file dialogue on macOS has a different behaviour
+        # The selected file path is to the "Fiji.app" directory
+        # The ImageJ executable is in "Fiji.app/Contents/MacOS/ImageJ-macosx"
+        "MOCK_IMAGEJ_EXEC_PATH": imagej_path / "Contents/MacOS/ImageJ-macosx"
+        if system() == "Darwin"
+        else imagej_path,
         "MOCK_XML_PATH": Path.home() / "stitching/Brain2/bdv.xml",
         "MOCK_TILE_CONFIG_PATH": Path.home()
         / "stitching/Brain2/bdv_tile_config.txt",

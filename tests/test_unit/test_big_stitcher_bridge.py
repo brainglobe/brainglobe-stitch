@@ -1,44 +1,18 @@
 from importlib.resources import files
-from pathlib import Path
 
 import pytest
 
 from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
 
-IMAGEJ_PATH_WINDOWS = Path("C:/Fiji.app/ImageJ-win64.exe")
-XML_PATH_WINDOWS = Path("C:/stitching/Brain2/bdv.xml")
-TILE_CONFIG_PATH_WINDOWS = Path("C:/stitching/Brain2/bdv_tile_config.txt")
 
-IMAGEJ_PATH_MAC = Path("/Users/user/Fiji.app")
-IMAGEJ_PATH_MAC_CHECK = Path(
-    "/Users/user/Fiji.app/Contents/MacOS/ImageJ-macosx"
-)
-XML_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv.xml")
-TILE_CONFIG_PATH_MAC = Path("/Users/user/stitching/Brain2/bdv_tile_config.txt")
-
-
-@pytest.mark.parametrize(
-    "test_platform, imagej_path, xml_path, tile_config_path",
-    [
-        (
-            "Windows",
-            IMAGEJ_PATH_WINDOWS,
-            XML_PATH_WINDOWS,
-            TILE_CONFIG_PATH_WINDOWS,
-        ),
-        ("Darwin", IMAGEJ_PATH_MAC, XML_PATH_MAC, TILE_CONFIG_PATH_MAC),
-    ],
-)
-def test_run_big_stitcher_defaults(
-    mocker, test_platform, imagej_path, xml_path, tile_config_path
-):
+def test_run_big_stitcher_defaults(mocker, test_constants):
     mock_subprocess_run = mocker.patch(
         "brainglobe_stitch.big_stitcher_bridge.subprocess.run"
     )
-    mocker.patch(
-        "brainglobe_stitch.big_stitcher_bridge.system",
-        return_value=test_platform,
-    )
+
+    imagej_path = test_constants["MOCK_IMAGEJ_PATH"]
+    xml_path = test_constants["MOCK_XML_PATH"]
+    tile_config_path = test_constants["MOCK_TILE_CONFIG_PATH"]
 
     run_big_stitcher(imagej_path, xml_path, tile_config_path)
 
@@ -46,11 +20,10 @@ def test_run_big_stitcher_defaults(
     # Should be in the root of the package
     macro_path = files("brainglobe_stitch") / "bigstitcher_macro.ijm"
 
-    if test_platform == "Darwin":
-        imagej_path = IMAGEJ_PATH_MAC_CHECK
+    expected_imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
     command = (
-        f"{imagej_path} --ij2"
+        f"{expected_imagej_path} --ij2"
         f" --headless -macro {macro_path} "
         f'"{xml_path} {tile_config_path} 0 488 4 4 1"'
     )
@@ -76,18 +49,15 @@ def test_run_big_stitcher(
     downsample_x,
     downsample_y,
     downsample_z,
+    test_constants,
 ):
     mock_subprocess_run = mocker.patch(
         "brainglobe_stitch.big_stitcher_bridge.subprocess.run"
     )
-    mocker.patch(
-        "brainglobe_stitch.big_stitcher_bridge.system",
-        return_value="Windows",
-    )
 
-    imagej_path = IMAGEJ_PATH_WINDOWS
-    xml_path = XML_PATH_WINDOWS
-    tile_config_path = TILE_CONFIG_PATH_WINDOWS
+    imagej_path = test_constants["MOCK_IMAGEJ_PATH"]
+    xml_path = test_constants["MOCK_XML_PATH"]
+    tile_config_path = test_constants["MOCK_TILE_CONFIG_PATH"]
 
     run_big_stitcher(
         imagej_path,
@@ -101,9 +71,10 @@ def test_run_big_stitcher(
     )
 
     macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
+    expected_imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
     command = (
-        f"{imagej_path} --ij2"
+        f"{expected_imagej_path} --ij2"
         f" --headless -macro {macro_path} "
         f'"{xml_path} {tile_config_path} {int(all_channels)} '
         f"{selected_channel} "
