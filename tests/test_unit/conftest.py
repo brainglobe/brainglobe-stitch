@@ -9,6 +9,36 @@ TEMP_DIR = Path.home() / "temp_test_directory"
 TEST_DATA_URL = "https://gin.g-node.org/IgorTatarnikov/brainglobe-stitch-test/raw/master/brainglobe-stitch/brainglobe-stitch-test-data.zip"
 
 
+## BACKUP CONSTANTS
+NUM_TILES = 8
+NUM_RESOLUTIONS = 5
+NUM_CHANNELS = 2
+TILE_SIZE = (107, 128, 128)
+
+EXPECTED_TILE_CONFIG = [
+    "dim=3",
+    "00;;(0,0,0)",
+    "01;;(0,115,0)",
+    "04;;(0,0,0)",
+    "05;;(0,115,0)",
+    "10;;(115,0,0)",
+    "11;;(115,115,0)",
+    "14;;(115,0,0)",
+    "15;;(115,115,0)",
+]
+
+EXPECTED_TILE_POSITIONS = [
+    [3, 4, 2],
+    [2, 120, 0],
+    [3, 4, 2],
+    [2, 120, 0],
+    [6, 7, 118],
+    [5, 123, 116],
+    [6, 7, 118],
+    [5, 123, 116],
+]
+
+
 @pytest.fixture(scope="session", autouse=True)
 def download_test_data():
     TEMP_DIR.mkdir(exist_ok=True)
@@ -72,3 +102,59 @@ def imagej_path():
         return Path.home() / "Fiji.app/Contents/MacOS/ImageJ-macosx"
     else:
         return Path.home() / "Fiji.app/ImageJ-linux64"
+
+
+@pytest.fixture(scope="module")
+def test_constants():
+    # The tiles lie in one z-plane and are arranged in a 2x2 grid
+    # with 2 channels.
+    # Each tile is 128x128x107 pixels (x, y, z).
+    # The tiles overlap by 10% in x and y (13 pixels).
+    # The tiles are arranged in the following pattern:
+    # channel 0   | channel 1
+    # 00 10          | 04 05
+    # 01 11           | 14 15
+
+    # EXPECTED_TILE_CONFIG is based on test_data_bdv.xml
+    # The tile positions are in pixels in x, y, z order
+
+    # EXPECTED_TILE_POSITIONS are based on the stitch transforms found
+    # in test_data_bdv.xml
+    # The tile positions are in pixels in z, y, x order
+    constants_dict = {
+        "NUM_TILES": 8,
+        "NUM_CHANNELS": 2,
+        "NUM_RESOLUTIONS": 5,
+        "TILE_SIZE": (107, 128, 128),
+        "EXPECTED_TILE_CONFIG": [
+            "dim=3",
+            "00;;(0,0,0)",
+            "01;;(0,115,0)",
+            "04;;(0,0,0)",
+            "05;;(0,115,0)",
+            "10;;(115,0,0)",
+            "11;;(115,115,0)",
+            "14;;(115,0,0)",
+            "15;;(115,115,0)",
+        ],
+        "EXPECTED_TILE_POSITIONS": [
+            [3, 4, 2],
+            [2, 120, 0],
+            [3, 4, 2],
+            [2, 120, 0],
+            [6, 7, 118],
+            [5, 123, 116],
+            [6, 7, 118],
+            [5, 123, 116],
+        ],
+        "CHANNELS": ["561 nm", "647 nm"],
+        "PIXEL_SIZE_XY": 4.08,
+        "PIXEL_SIZE_Z": 5.0,
+        "MOCK_IMAGEJ_PATH": Path.home() / "Fiji.app/imageJ.exe",
+        "MOCK_IMAGEJ_PATH_MAC": Path.home() / "Fiji.app",
+        "MOCK_XML_PATH": Path.home() / "stitching/Brain2/bdv.xml",
+        "MOCK_TILE_CONFIG_PATH": Path.home()
+        / "stitching/Brain2/bdv_tile_config.txt",
+    }
+
+    return constants_dict
