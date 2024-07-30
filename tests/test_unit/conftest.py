@@ -9,36 +9,6 @@ TEMP_DIR = Path.home() / "temp_test_directory"
 TEST_DATA_URL = "https://gin.g-node.org/IgorTatarnikov/brainglobe-stitch-test/raw/master/brainglobe-stitch/brainglobe-stitch-test-data.zip"
 
 
-## BACKUP CONSTANTS
-NUM_TILES = 8
-NUM_RESOLUTIONS = 5
-NUM_CHANNELS = 2
-TILE_SIZE = (107, 128, 128)
-
-EXPECTED_TILE_CONFIG = [
-    "dim=3",
-    "00;;(0,0,0)",
-    "01;;(0,115,0)",
-    "04;;(0,0,0)",
-    "05;;(0,115,0)",
-    "10;;(115,0,0)",
-    "11;;(115,115,0)",
-    "14;;(115,0,0)",
-    "15;;(115,115,0)",
-]
-
-EXPECTED_TILE_POSITIONS = [
-    [3, 4, 2],
-    [2, 120, 0],
-    [3, 4, 2],
-    [2, 120, 0],
-    [6, 7, 118],
-    [5, 123, 116],
-    [6, 7, 118],
-    [5, 123, 116],
-]
-
-
 @pytest.fixture(scope="session", autouse=True)
 def download_test_data():
     TEMP_DIR.mkdir(exist_ok=True)

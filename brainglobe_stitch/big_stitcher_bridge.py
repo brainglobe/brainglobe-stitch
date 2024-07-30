@@ -14,8 +14,8 @@ def run_big_stitcher(
     downsample_z: int = 1,
 ) -> subprocess.CompletedProcess:
     """
-    Run the BigStitcher ImageJ macro in headless mode. Output is captured
-    and returned as part of the subprocess.CompletedProcess.
+    Run the BigStitcher ImageJ macro. Output is captured and returned as part
+    of the subprocess.CompletedProcess.
 
     Parameters
     ----------

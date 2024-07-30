@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Generator
 
 import dask.array as da
 import napari.layers
@@ -17,11 +18,25 @@ from brainglobe_stitch.stitching_widget import (
 def stitching_widget(make_napari_viewer_proxy) -> StitchingWidget:
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
+
     return stitching_widget
 
 
-def test_add_tiles_from_mosaic(naive_bdv_directory):
-    image_mosaic = ImageMosaic(naive_bdv_directory)
+@pytest.fixture
+def stitching_widget_with_mosaic(
+    stitching_widget, naive_bdv_directory
+) -> Generator[StitchingWidget, None, None]:
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+
+    yield stitching_widget
+
+    stitching_widget.image_mosaic.__del__()
+
+
+def test_add_tiles_from_mosaic(
+    naive_bdv_directory, stitching_widget_with_mosaic
+):
+    image_mosaic = stitching_widget_with_mosaic.image_mosaic
     test_data = image_mosaic.data_for_napari(0)
 
     for data, tile in zip(
@@ -208,9 +223,9 @@ def test_on_imagej_path_text_edited(stitching_widget, mocker):
 
 
 def test_on_stitch_button_clicked(
-    stitching_widget, naive_bdv_directory, mocker
+    stitching_widget_with_mosaic, naive_bdv_directory, mocker
 ):
-    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    stitching_widget = stitching_widget_with_mosaic
 
     mock_stitch_function = mocker.patch(
         "brainglobe_stitch.stitching_widget.ImageMosaic.stitch",
@@ -251,8 +266,10 @@ def test_check_imagej_path_invalid(stitching_widget, mocker):
     mock_show_warning.assert_called_once_with(error_message)
 
 
-def test_update_tiles_from_mosaic(stitching_widget, naive_bdv_directory):
-    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+def test_update_tiles_from_mosaic(
+    stitching_widget_with_mosaic, naive_bdv_directory
+):
+    stitching_widget = stitching_widget_with_mosaic
     num_tiles = 4
     test_data = []
 
