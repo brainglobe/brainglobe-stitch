@@ -94,20 +94,20 @@ def bdv_directory_function_level():
     shutil.rmtree(test_dir)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def imagej_path():
     if platform.system() == "Windows":
         return Path.home() / "Fiji.app/ImageJ-win64.exe"
     elif platform.system() == "Darwin":
-        return Path.home() / "Fiji.app/Contents/MacOS/ImageJ-macosx"
+        return Path.home() / "Fiji.app"
     else:
         return Path.home() / "Fiji.app/ImageJ-linux64"
 
 
 @pytest.fixture(scope="module")
-def test_constants():
-    # The tiles lie in one z-plane and are arranged in a 2x2 grid
-    # with 2 channels.
+def test_constants(imagej_path):
+    # The tiles lie in one z-plane and are arranged in a 2x2 grid.
+    # There are 2 channels.
     # Each tile is 128x128x107 pixels (x, y, z).
     # The tiles overlap by 10% in x and y (13 pixels).
     # The tiles are arranged in the following pattern:
@@ -150,8 +150,7 @@ def test_constants():
         "CHANNELS": ["561 nm", "647 nm"],
         "PIXEL_SIZE_XY": 4.08,
         "PIXEL_SIZE_Z": 5.0,
-        "MOCK_IMAGEJ_PATH": Path.home() / "Fiji.app/imageJ.exe",
-        "MOCK_IMAGEJ_PATH_MAC": Path.home() / "Fiji.app",
+        "MOCK_IMAGEJ_PATH": imagej_path,
         "MOCK_XML_PATH": Path.home() / "stitching/Brain2/bdv.xml",
         "MOCK_TILE_CONFIG_PATH": Path.home()
         / "stitching/Brain2/bdv_tile_config.txt",

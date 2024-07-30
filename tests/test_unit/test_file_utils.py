@@ -13,25 +13,6 @@ from brainglobe_stitch.file_utils import (
     parse_mesospim_metadata,
 )
 
-TEMP_DIR = Path("./temp_directory")
-NUM_RESOLUTIONS = 5
-NUM_TILES = 8
-CHANNELS = ["561 nm", "647 nm"]
-PIXEL_SIZE_XY = 4.08
-PIXEL_SIZE_Z = 5.0
-EXPECTED_TRANSFORMS = np.array(
-    [
-        [3, 4, 2],
-        [2, 120, 0],
-        [3, 4, 2],
-        [2, 120, 0],
-        [6, 7, 118],
-        [5, 123, 116],
-        [6, 7, 118],
-        [5, 123, 116],
-    ]
-)
-
 
 @pytest.fixture
 def bad_bdv_directory():
@@ -43,7 +24,9 @@ def bad_bdv_directory():
     shutil.rmtree(bad_dir)
 
 
-def test_create_pyramid_bdv_h5(naive_bdv_directory, test_data_directory):
+def test_create_pyramid_bdv_h5(
+    naive_bdv_directory, test_data_directory, test_constants
+):
     h5_path = naive_bdv_directory / "test_data_bdv.h5"
     with h5py.File(h5_path, "r") as f:
         num_tiles = len(f["t00000"].keys())
@@ -71,24 +54,31 @@ def test_create_pyramid_bdv_h5(naive_bdv_directory, test_data_directory):
 
         for tile_name in tile_names:
             assert (
-                f_out[f"{tile_name}/resolutions"].shape[0] == NUM_RESOLUTIONS
+                f_out[f"{tile_name}/resolutions"].shape[0]
+                == test_constants["NUM_RESOLUTIONS"]
             )
             assert (
-                f_out[f"{tile_name}/subdivisions"].shape[0] == NUM_RESOLUTIONS
+                f_out[f"{tile_name}/subdivisions"].shape[0]
+                == test_constants["NUM_RESOLUTIONS"]
             )
-            assert len(f_out[f"t00000/{tile_name}"].keys()) == NUM_RESOLUTIONS
+            assert (
+                len(f_out[f"t00000/{tile_name}"].keys())
+                == test_constants["NUM_RESOLUTIONS"]
+            )
 
 
-def test_parse_mesospim_metadata(naive_bdv_directory):
+def test_parse_mesospim_metadata(naive_bdv_directory, test_constants):
     meta_path = naive_bdv_directory / "test_data_bdv.h5_meta.txt"
 
     meta_data = parse_mesospim_metadata(meta_path)
 
-    assert len(meta_data) == NUM_TILES
-    for i in range(NUM_TILES):
-        assert meta_data[i]["Laser"] == CHANNELS[i % 2]
-        assert meta_data[i]["Pixelsize in um"] == PIXEL_SIZE_XY
-        assert meta_data[i]["z_stepsize"] == PIXEL_SIZE_Z
+    assert len(meta_data) == test_constants["NUM_TILES"]
+    for i in range(test_constants["NUM_TILES"]):
+        assert meta_data[i]["Laser"] == test_constants["CHANNELS"][i % 2]
+        assert (
+            meta_data[i]["Pixelsize in um"] == test_constants["PIXEL_SIZE_XY"]
+        )
+        assert meta_data[i]["z_stepsize"] == test_constants["PIXEL_SIZE_Z"]
 
 
 def test_check_mesospim_directory(naive_bdv_directory):
@@ -164,13 +154,13 @@ def test_check_mesospim_directory_too_many_files(
         assert error_message in str(e)
 
 
-def test_get_slice_attributes(naive_bdv_directory):
+def test_get_slice_attributes(naive_bdv_directory, test_constants):
     xml_path = naive_bdv_directory / "test_data_bdv.xml"
-    tile_names = [f"s{i:02}" for i in range(NUM_TILES)]
+    tile_names = [f"s{i:02}" for i in range(test_constants["NUM_TILES"])]
 
     slice_attributes = get_slice_attributes(xml_path, tile_names)
 
-    assert len(slice_attributes) == NUM_TILES
+    assert len(slice_attributes) == test_constants["NUM_TILES"]
 
     # The slices are arranged in a 2x2 grid with 2 channels
     # The tiles in the test data are arranged in columns per channel
@@ -179,7 +169,7 @@ def test_get_slice_attributes(naive_bdv_directory):
     #      s02, s03 are channel 1, tile 0 and 1, illumination 0
     #      s04, s05 are channel 0, tile 2 and 3, illumination 1
     #      s06, s07 are channel 1, tile 2 and 3, illumination 1
-    for i in range(NUM_TILES):
+    for i in range(test_constants["NUM_TILES"]):
         assert slice_attributes[tile_names[i]]["channel"] == str((i // 2) % 2)
         assert slice_attributes[tile_names[i]]["tile"] == str(
             i % 2 + (i // 4) * 2
@@ -188,9 +178,11 @@ def test_get_slice_attributes(naive_bdv_directory):
         assert slice_attributes[tile_names[i]]["angle"] == "0"
 
 
-def test_get_big_stitcher_transforms(naive_bdv_directory):
+def test_get_big_stitcher_transforms(naive_bdv_directory, test_constants):
     xml_path = naive_bdv_directory / "test_data_bdv.xml"
 
     transforms = get_big_stitcher_transforms(xml_path)
 
-    assert np.equal(transforms, EXPECTED_TRANSFORMS).all()
+    assert np.equal(
+        transforms, test_constants["EXPECTED_TILE_POSITIONS"]
+    ).all()
