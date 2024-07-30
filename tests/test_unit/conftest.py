@@ -154,9 +154,11 @@ def test_constants(imagej_path):
         # The file dialogue on macOS has a different behaviour
         # The selected file path is to the "Fiji.app" directory
         # The ImageJ executable is in "Fiji.app/Contents/MacOS/ImageJ-macosx"
-        "MOCK_IMAGEJ_EXEC_PATH": imagej_path / "Contents/MacOS/ImageJ-macosx"
-        if system() == "Darwin"
-        else imagej_path,
+        "MOCK_IMAGEJ_EXEC_PATH": (
+            imagej_path / "Contents/MacOS/ImageJ-macosx"
+            if system() == "Darwin"
+            else imagej_path
+        ),
         "MOCK_XML_PATH": Path.home() / "stitching/Brain2/bdv.xml",
         "MOCK_TILE_CONFIG_PATH": Path.home()
         / "stitching/Brain2/bdv_tile_config.txt",
