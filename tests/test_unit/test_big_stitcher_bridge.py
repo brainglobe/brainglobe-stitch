@@ -6,6 +6,11 @@ from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
 
 
 def test_run_big_stitcher_defaults(mocker, test_constants):
+    """
+    Test the run_big_stitcher function with default parameters. Mocks
+    the subprocess.run function to check if the correct command is
+    passed and to prevent the actual command from running.
+    """
     mock_subprocess_run = mocker.patch(
         "brainglobe_stitch.big_stitcher_bridge.subprocess.run"
     )
@@ -51,6 +56,11 @@ def test_run_big_stitcher(
     downsample_z,
     test_constants,
 ):
+    """
+    Test the run_big_stitcher function with custom parameters. Mocks
+    the subprocess.run function to check if the correct command is
+    passed and to prevent the actual command from running.
+    """
     mock_subprocess_run = mocker.patch(
         "brainglobe_stitch.big_stitcher_bridge.subprocess.run"
     )
@@ -70,7 +80,10 @@ def test_run_big_stitcher(
         downsample_z=downsample_z,
     )
 
+    # Expected path to the ImageJ macro
+    # Should be in the root of the package
     macro_path = files("brainglobe_stitch").joinpath("bigstitcher_macro.ijm")
+
     expected_imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
     command = (
