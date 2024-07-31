@@ -36,6 +36,11 @@ def stitching_widget_with_mosaic(
 def test_add_tiles_from_mosaic(
     naive_bdv_directory, stitching_widget_with_mosaic
 ):
+    """
+    Test that the add_tiles_from_mosaic function correctly creates
+    napari.layers.Image objects from the data the correct values are stored
+    in the napari.layers.Image objects.
+    """
     image_mosaic = stitching_widget_with_mosaic.image_mosaic
     test_data = image_mosaic.data_for_napari(0)
 
@@ -48,6 +53,12 @@ def test_add_tiles_from_mosaic(
 
 
 def test_stitching_widget_init(make_napari_viewer_proxy):
+    """
+    Test that the StitchingWidget is correctly initialized with the viewer
+    Currently tests that the viewer is correctly stored, the image_mosaic is
+    None, the tile_layers list is empty, and the resolution_to_display.
+    is set to 3.
+    """
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
@@ -58,6 +69,14 @@ def test_stitching_widget_init(make_napari_viewer_proxy):
 
 
 def test_on_open_file_dialog_clicked(stitching_widget, mocker):
+    """
+    Test that the on_open_file_dialog_clicked method correctly sets the
+    working_directory attribute of the StitchingWidget to the provided
+    directory. The directory is provided by mocking the return of the
+    QFileDialog.getExistingDirectory method. The
+    check_and_load_mesospim_directory method is also mocked to prevent
+    actually opening and loading the files into the StitchingWidget.
+    """
     test_dir = str(Path.home() / "test_dir")
     mocker.patch(
         "brainglobe_stitch.stitching_widget.QFileDialog.getExistingDirectory",
@@ -74,6 +93,13 @@ def test_on_open_file_dialog_clicked(stitching_widget, mocker):
 
 
 def test_on_mesospim_directory_text_edited(stitching_widget, mocker):
+    """
+    Test that the on_mesospim_directory_text_edited method correctly sets
+    the working_directory attribute of the StitchingWidget to the provided
+    directory. The directory is provided by setting the text of the mesospim
+    directory text field. The check_and_load_mesospim_directory is mocked to
+    prevent actually opening and loading the files into the StitchingWidget.
+    """
     test_dir = str(Path.home() / "test_dir")
     mocker.patch(
         "brainglobe_stitch.stitching_widget.StitchingWidget.check_and_load_mesospim_directory",
@@ -87,6 +113,13 @@ def test_on_mesospim_directory_text_edited(stitching_widget, mocker):
 
 
 def test_on_create_pyramid_button_clicked(stitching_widget, mocker):
+    """
+    Test that the on_create_pyramid_button_clicked method correctly calls
+    the create_worker function with the correct arguments. The create_worker
+    function is mocked to prevent actually creating the pyramid. The create
+    pyramid button is disabled should be disabled after the method is called
+    and the add_tiles_button should be enabled.
+    """
     stitching_widget.h5_path = Path.home() / "test_path"
     mock_create_worker = mocker.patch(
         "brainglobe_stitch.stitching_widget.create_worker",
@@ -106,8 +139,14 @@ def test_on_create_pyramid_button_clicked(stitching_widget, mocker):
 
 
 def test_on_add_tiles_button_clicked(
-    stitching_widget, naive_bdv_directory, mocker
+    stitching_widget, naive_bdv_directory, mocker, test_constants
 ):
+    """
+    Test that the on_add_tiles_button_clicked method correctly calls the
+    create_worker function once. Following the call to the method, the
+    image_mosaic attribute should be set to an ImageMosaic object and the
+    fuse_channel_dropdown should be populated with the correct values.
+    """
     stitching_widget.working_directory = naive_bdv_directory
 
     mock_create_worker = mocker.patch(
@@ -119,9 +158,21 @@ def test_on_add_tiles_button_clicked(
 
     mock_create_worker.assert_called_once()
 
+    assert stitching_widget.image_mosaic is not None
+
+    dropdown_values = [
+        stitching_widget.fuse_channel_dropdown.itemText(i)
+        for i in range(stitching_widget.fuse_channel_dropdown.count())
+    ]
+    assert dropdown_values == test_constants["CHANNELS"]
+
 
 @pytest.mark.parametrize("num_layers", [1, 2, 5])
 def test_set_tile_layers_multiple(stitching_widget, num_layers):
+    """
+    Test that the _set_tile_layers method correctly adds the provided
+    napari.layers.Image objects to the tile_layers list and to the viewer.
+    """
     test_data = da.ones((10, 10, 10))
 
     test_layers = []
@@ -132,8 +183,8 @@ def test_set_tile_layers_multiple(stitching_widget, num_layers):
         test_layers.append(test_layer)
 
     assert len(stitching_widget.tile_layers) == num_layers
-    for i in range(num_layers):
-        assert stitching_widget.tile_layers[i] == test_layers[i]
+    assert stitching_widget._viewer.layers == test_layers
+    assert stitching_widget.tile_layers == test_layers
 
 
 def test_check_and_load_mesospim_directory(
