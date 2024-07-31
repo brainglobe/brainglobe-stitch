@@ -190,6 +190,11 @@ def test_set_tile_layers_multiple(stitching_widget, num_layers):
 def test_check_and_load_mesospim_directory(
     stitching_widget, naive_bdv_directory
 ):
+    """
+    Sets the working_directory attribute of the StitchingWidget to the
+    naive_bdv_directory and checks that the correct paths are set for the
+    StitchingWidget, and that the add_tiles_button is enabled.
+    """
     stitching_widget.working_directory = naive_bdv_directory
 
     stitching_widget.check_and_load_mesospim_directory()
@@ -208,6 +213,12 @@ def test_check_and_load_mesospim_directory(
 def test_check_and_load_mesospim_directory_no_pyramid(
     stitching_widget, bdv_directory_function_level, mocker
 ):
+    """
+    Uses the bdv_directory_function_level fixture to create a clean
+    mesospim directory. This should trigger the show_warning method to
+    inform the user that the resolution pyramid was not found and enable
+    the create_pyramid_button.
+    """
     stitching_widget.working_directory = bdv_directory_function_level
 
     mock_show_warning = mocker.patch(
@@ -231,6 +242,12 @@ def test_check_and_load_mesospim_directory_missing_files(
     mocker,
     file_to_remove,
 ):
+    """
+    Uses the bdv_directory_function_level fixture to create a clean
+    mesospim directory and then remove one of the files (file_to_remove).
+    This should trigger a show_warning message to inform the user that the
+    mesoSPIM directory is not valid.
+    """
     stitching_widget.working_directory = bdv_directory_function_level
     error_message = "mesoSPIM directory not valid"
 
@@ -245,6 +262,13 @@ def test_check_and_load_mesospim_directory_missing_files(
 
 
 def test_on_open_file_dialog_imagej_clicked(stitching_widget, mocker):
+    """
+    Mocks the QFileDialog.getOpenFileName method to return a mock imageJ
+    directory. The check_imagej_path method is also mocked as the path doesn't
+    point to a valid imageJ executable. The imageJ path text field should have
+    the mock imageJ directory and the imageJ path attribute of the stitching
+    widget should be set to the mock imageJ directory.
+    """
     imagej_dir = str(Path.home() / "imageJ")
     mocker.patch(
         "brainglobe_stitch.stitching_widget.QFileDialog.getOpenFileName",
@@ -261,6 +285,11 @@ def test_on_open_file_dialog_imagej_clicked(stitching_widget, mocker):
 
 
 def test_on_imagej_path_text_edited(stitching_widget, mocker):
+    """
+    Manually sets the imageJ path text field to a mock imageJ directory to
+    mimic a user manually entering or copying a path to imageJ. The imagej_path
+    attribute of the StitchingWidget should be set to the mock directory.
+    """
     imagej_dir = str(Path.home() / "imageJ")
     mocker.patch(
         "brainglobe_stitch.stitching_widget.StitchingWidget.check_imagej_path",
@@ -276,6 +305,13 @@ def test_on_imagej_path_text_edited(stitching_widget, mocker):
 def test_on_stitch_button_clicked(
     stitching_widget_with_mosaic, naive_bdv_directory, mocker
 ):
+    """
+    Uses the stitching_widget_with_mosaic fixture to create a StitchingWidget
+    with an ImageMosaic object. The mock_stitch_function is used to prevent
+    the actual stitching of the ImageMosaic object.
+    Tests that the _on_stitch_button_clicked method correctly calls the stitch
+    method of the ImageMosaic object with the correct arguments.
+    """
     stitching_widget = stitching_widget_with_mosaic
 
     mock_stitch_function = mocker.patch(
@@ -294,6 +330,13 @@ def test_on_stitch_button_clicked(
 
 
 def test_check_imagej_path_valid(stitching_widget):
+    """
+    Creates a mock imageJ file in the home directory and sets it as the
+    imageJ path of the StitchingWidget. The check_imagej_path method should
+    enable the stitch button as the path is valid.
+
+    The mock imageJ file is removed after the test.
+    """
     stitching_widget.imagej_path = Path.home() / "imageJ"
     stitching_widget.imagej_path.touch(exist_ok=True)
     stitching_widget.check_imagej_path()
@@ -305,6 +348,10 @@ def test_check_imagej_path_valid(stitching_widget):
 
 
 def test_check_imagej_path_invalid(stitching_widget, mocker):
+    """
+    Sets the imageJ path of the StitchingWidget to a non-existent directory.
+    The check_imagej_path method should show a warning message to the user.
+    """
     stitching_widget.imagej_path = Path.home() / "imageJ"
 
     mock_show_warning = mocker.patch(
@@ -321,23 +368,30 @@ def test_check_imagej_path_invalid(stitching_widget, mocker):
 
 
 def test_update_tiles_from_mosaic(
-    stitching_widget_with_mosaic, naive_bdv_directory
+    stitching_widget_with_mosaic, naive_bdv_directory, test_constants
 ):
+    """
+    Uses the stitching_widget_with_mosaic fixture to create a StitchingWidget
+    with an ImageMosaic object. The tiles from the ImageMosaic object are
+    added to the tile_layers list. The update_tiles_from_mosaic method is
+    called with mock data and offsets. The data and offset of each
+    napari.layers.Image are checked.
+    """
     stitching_widget = stitching_widget_with_mosaic
-    num_tiles = 4
+    num_tiles = test_constants["NUM_TILES"]
     test_data = []
 
     initial_data = stitching_widget.image_mosaic.data_for_napari(0)
-
-    for i in range(num_tiles):
-        test_data.append(
-            (da.ones(initial_data[0][0].shape) + i, np.array([i, i, i]))
-        )
 
     for tile in add_tiles_from_mosaic(
         initial_data, stitching_widget.image_mosaic
     ):
         stitching_widget.tile_layers.append(tile)
+
+    for i in range(num_tiles):
+        test_data.append(
+            (da.ones(initial_data[0][0].shape) + i, np.array([i, i, i]))
+        )
 
     stitching_widget.update_tiles_from_mosaic(test_data)
 
