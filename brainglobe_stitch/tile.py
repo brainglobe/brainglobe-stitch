@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import dask.array as da
 import numpy as np
@@ -50,7 +50,7 @@ class Tile:
         self.neighbours: List[int] = []
         self.data_pyramid: List[da.Array] = []
         self.resolution_pyramid: npt.NDArray = np.array([])
-        self.channel_name: Optional[str] = None
+        self.channel_name: str = ""
         self.channel_id: int = int(attributes["channel"])
         self.tile_id: int = int(attributes["tile"])
         self.illumination_id: int = int(attributes["illumination"])

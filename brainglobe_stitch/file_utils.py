@@ -34,16 +34,16 @@ def create_pyramid_bdv_h5(
 
     Parameters
     ----------
-    input_file: Path
+    input_file : Path
         The path to the input HDF5 file.
-    yield_progress: bool, optional
+    yield_progress : bool, optional
         Whether to yield progress. If True, the function will yield the
         progress as a percentage.
-    resolutions_array: npt.NDArray, optional
+    resolutions_array : npt.NDArray, optional
         The downsampling factors to use for each resolution level.
         This is a 2D array where each row represents a resolution level and the
         columns represent the downsampling factors for x, y, and z.
-    subdivisions_array: npt.NDArray, optional
+    subdivisions_array : npt.NDArray, optional
         The size of the blocks at each resolution level.
         This is a 2D array where each row represents a resolution level and the
         columns represent the size of the blocks for x, y, and z.
@@ -113,7 +113,7 @@ def parse_mesospim_metadata(
 
     Parameters
     ----------
-    meta_file_name: Path
+    meta_file_name : Path
         The path to the h5_meta.txt file.
 
     Returns
@@ -163,7 +163,7 @@ def check_mesospim_directory(
 
     Parameters
     ----------
-    mesospim_directory: Path
+    mesospim_directory : Path
         The path to the mesoSPIM directory.
 
     Returns
@@ -203,9 +203,9 @@ def get_slice_attributes(
 
     Parameters
     ----------
-    xml_path: Path
+    xml_path : Path
         The path to the XML file.
-    tile_names: List[str]
+    tile_names : List[str]
         The names of the tiles.
 
     Returns
@@ -226,3 +226,140 @@ def get_slice_attributes(
         slice_attributes[name] = sub_dict
 
     return slice_attributes
+
+
+def get_big_stitcher_transforms(xml_path: Path) -> npt.NDArray:
+    """
+    Get the translations for each tile from a Big Data Viewer XML file.
+    The translations are calculated by BigStitcher.
+
+    Parameters
+    ----------
+    xml_path : Path
+        The path to the Big Data Viewer XML file.
+
+    Returns
+    -------
+    npt.NDArray
+        A numpy array of shape (num_tiles, num_dim) with the translations.
+        Each row corresponds to a tile and each column to a dimension.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+
+    stitch_transforms = safe_find_all(
+        root, ".//ViewTransform/[Name='Stitching Transform']/affine"
+    )
+
+    # Stitching Transforms are there if aligning to grid is done manually
+    # Translation from Tile Configurations are there if aligned automatically
+    grid_transforms = safe_find_all(
+        root,
+        ".//ViewTransform/[Name='Translation from Tile Configuration']/affine",
+    )
+    if len(grid_transforms) == 0:
+        grid_transforms = safe_find_all(
+            root,
+            ".//ViewTransform/[Name='Translation to Regular Grid']/affine",
+        )
+
+    z_scale_str = safe_find(
+        root, ".//ViewTransform/[Name='calibration']/affine"
+    )
+
+    if not z_scale_str.text:
+        raise ValueError("No z scale found in XML")
+
+    z_scale = float(z_scale_str.text.split()[-2])
+
+    deltas = np.ones((len(stitch_transforms), 3))
+    grids = np.ones((len(grid_transforms), 3))
+    for i in range(len(stitch_transforms)):
+        delta_nums_text = stitch_transforms[i].text
+        grid_nums_text = grid_transforms[i].text
+
+        if not delta_nums_text or not grid_nums_text:
+            raise ValueError("No translation values found in XML")
+
+        delta_nums = delta_nums_text.split()
+        grid_nums = grid_nums_text.split()
+
+        # Extract the translation values from the transform.
+        # Swap the order of the axis (x,y,z) to (z,y,x).
+        # The input values are a flattened 4x4 matrix where
+        # the translation values in the last column.
+        deltas[i] = np.array(delta_nums[11:2:-4])
+        grids[i] = np.array(grid_nums[11:2:-4])
+
+    # Divide the z translation by the z scale
+    deltas[:, 0] /= z_scale
+    grids[:, 0] /= z_scale
+
+    # Round the translations to the nearest integer
+    grids = grids.round().astype(np.int32)
+    deltas = deltas.round().astype(np.int32)
+
+    # Normalise the grid transforms by subtracting the minimum value
+    norm_grids = grids - grids.min(axis=0)
+    # Calculate the maximum delta (from BigStitcher) for each dimension
+    max_delta = np.absolute(deltas).max(axis=0)
+
+    # Calculate the start and end coordinates for each tile such that the
+    # first tile is at 0,0,0 and provide enough padding to account for the
+    # transforms from BigStitcher
+    translations = norm_grids + deltas + max_delta
+
+    return translations
+
+
+def safe_find_all(root: ET.Element, query: str) -> List[ET.Element]:
+    """
+    Find all elements matching a query in an ElementTree root. If no
+    elements are found, return an empty list.
+
+    Parameters
+    ----------
+    root : ET.Element
+        The root of the ElementTree.
+    query : str
+        The query to search for.
+
+    Returns
+    -------
+    List[ET.Element]
+        A list of elements matching the query.
+    """
+    elements = root.findall(query)
+    if elements is None:
+        return []
+
+    return elements
+
+
+def safe_find(root: ET.Element, query: str) -> ET.Element:
+    """
+    Find the first element matching a query in an ElementTree root.
+    Raise a ValueError if no element found.
+
+    Parameters
+    ----------
+    root : ET.Element
+        The root of the ElementTree.
+    query : str
+        The query to search for.
+
+    Returns
+    -------
+    ET.Element
+        The element matching the query or None.
+
+    Raises
+    ------
+    ValueError
+        If no element is found.
+    """
+    element = root.find(query)
+    if element is None or element.text is None:
+        raise ValueError(f"No element found for query {query}")
+
+    return element
