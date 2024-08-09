@@ -17,7 +17,7 @@ To install latest development version :
 
     pip install git+https://github.com/brainglobe/brainglobe-stitch.git
 
-This plugin requires Fiji to be installed on your system. You can download Fiji from [here](https://imagej.net/Fiji/Downloads).
+This plugin requires Fiji to be installed on your system. You can download Fiji [here](https://imagej.net/Fiji/Downloads).
 
 The BigStitcher plugin must be installed in Fiji. Please follow the instructions [here](https://imagej.net/plugins/bigstitcher/#download).
 
