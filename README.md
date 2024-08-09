@@ -21,17 +21,19 @@ This plugin requires Fiji to be installed on your system. You can download Fiji 
 
 The BigStitcher plugin must be installed in Fiji. Please follow the instructions [here](https://imagej.net/plugins/bigstitcher/#download).
 
-
-## License
-
-Distributed under the terms of the [BSD-3] license,
-"brainglobe-stitch" is free and open source software
-
 ## Seeking help or contributing
 We are always happy to help users of our tools, and welcome any contributions. If you would like to get in contact with us for any reason, please see the [contact page of our website](https://brainglobe.info/contact.html).
 
+## License
+Distributed under the terms of the [BSD-3] license,
+"brainglobe-stitch" is free and open source software
+
+## Acknowledgements
+This [napari] plugin was generated with [Cookiecutter] using napari's [cookiecutter-napari-plugin] template and the [Neuroinformatics Unit's template](https://github.com/neuroinformatics-unit/python-cookiecutter).
 
 [napari]: https://napari.org
 [mesoSPIM]: https://www.mesospim.org/
 [BigStitcher]: https://imagej.net/BigStitcher
+[cookiecutter-napari-plugin]: https://github.com/napari/cookiecutter-napari-plugin
+[Cookiecutter]: https://github.com/audreyr/cookiecutter
 [BSD-3]: http://opensource.org/licenses/BSD-3-Clause
