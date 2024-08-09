@@ -13,7 +13,7 @@ We strongly recommend to use a virtual environment manager (like `conda` or `ven
 will not specify the Qt backend for napari, and you will therefore need to install that separately. Please see the
 [`napari` installation instructions](https://napari.org/stable/tutorials/fundamentals/installation.html) for further advice on this.
 
-To install latest development version :
+To install latest development version:
 
     pip install git+https://github.com/brainglobe/brainglobe-stitch.git
 
@@ -34,3 +34,4 @@ We are always happy to help users of our tools, and welcome any contributions. I
 [napari]: https://napari.org
 [mesoSPIM]: https://www.mesospim.org/
 [BigStitcher]: https://imagej.net/BigStitcher
+[BSD-3]: http://opensource.org/licenses/BSD-3-Clause
