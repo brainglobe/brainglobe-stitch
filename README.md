@@ -2,6 +2,10 @@
 
 Stitching tiled 3D light-sheet data in napari
 
+<p align="center">
+  <img height="460" src="https://github.com/user-attachments/assets/91f61f24-6fcf-4aa1-8a8f-de8c5e3db4a2" alt="Stitching a mouse brain acquired at a resolution of 4.06 &micro;m/px, 4.06 &micro;m/px, 5 &micro;m/px using 4 tiles">
+</p>
+
 ----------------------------------
 
 A [napari] plugin for stitching tiled 3D acquisitions from a [mesoSPIM] light-sheet microscope.
@@ -9,7 +13,7 @@ The plugin utilises [BigStitcher] to align the tiles and napari to visualise the
 
 ## Installation
 
-We strongly recommend to use a virtual environment manager (like `conda` or `venv`). The installation instructions below
+We strongly recommend to use a virtual environment manager (like `conda`). The installation instructions below
 will not specify the Qt backend for napari, and you will therefore need to install that separately. Please see the
 [`napari` installation instructions](https://napari.org/stable/tutorials/fundamentals/installation.html) for further advice on this.
 
