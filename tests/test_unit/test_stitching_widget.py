@@ -57,7 +57,7 @@ def test_stitching_widget_init(make_napari_viewer_proxy):
     Test that the StitchingWidget is correctly initialized with the viewer
     Currently tests that the viewer is correctly stored, the image_mosaic is
     None, the tile_layers list is empty, and the resolution_to_display.
-    is set to 3.
+    is set to 2.
     """
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
@@ -65,7 +65,7 @@ def test_stitching_widget_init(make_napari_viewer_proxy):
     assert stitching_widget._viewer == viewer
     assert stitching_widget.image_mosaic is None
     assert len(stitching_widget.tile_layers) == 0
-    assert stitching_widget.resolution_to_display == 3
+    assert stitching_widget.resolution_to_display == 2
 
 
 def test_on_open_file_dialog_clicked(stitching_widget, mocker):
