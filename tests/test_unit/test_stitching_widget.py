@@ -187,6 +187,32 @@ def test_set_tile_layers_multiple(stitching_widget, num_layers):
     assert stitching_widget.tile_layers == test_layers
 
 
+@pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
+def test_on_fuse_button_clicked(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker, file_name
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+
+    mock_fuse = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
+        autospec=True,
+    )
+
+    stitching_widget.output_file_name_field.setText(file_name)
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_fuse.assert_called_once_with(
+        stitching_widget.image_mosaic,
+        file_name,
+        normalise_intensity=False,
+        interpolate=False,
+    )
+
+
 def test_check_and_load_mesospim_directory(
     stitching_widget, naive_bdv_directory
 ):
@@ -398,3 +424,42 @@ def test_update_tiles_from_mosaic(
     for tile, test_data in zip(stitching_widget.tile_layers, test_data):
         assert (tile.data == test_data[0]).all()
         assert (tile.translate == test_data[1]).all()
+
+
+def test_on_fuse_button_clicked_no_file_name(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    error_message = "Output file name not specified"
+
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning",
+        autospec=True,
+    )
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+
+
+def test_on_fuse_button_clicked_wrong_suffix(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    stitching_widget.output_file_name_field.setText("fused_image.tif")
+    error_message = "Output file name should either end with .zarr or .h5"
+
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning",
+        autospec=True,
+    )
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
