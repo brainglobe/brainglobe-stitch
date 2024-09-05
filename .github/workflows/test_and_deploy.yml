@@ -39,6 +39,14 @@ jobs:
           python-version: "3.12"
 
     steps:
+      - name: Cache brainglobe directory
+        uses: actions/cache@v4
+        with:
+          path: | # ensure we don't cache any interrupted atlas download and extraction, if e.g. we cancel the workflow manually
+            ~/.brainglobe
+            ~/.cache/pooch
+            !~/.brainglobe/atlas.tar.gz
+          key: brainglobe
       # these libraries enable testing on Qt on linux
       - uses: pyvista/setup-headless-display-action@v2
         with:

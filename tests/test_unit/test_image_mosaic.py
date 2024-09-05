@@ -1,6 +1,9 @@
 import os
 
+import h5py
+import numpy as np
 import pytest
+import zarr
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
@@ -27,6 +30,24 @@ def image_mosaic(naive_bdv_directory):
 
     # Explicit call to close open h5 files
     image_mosaic.__del__()
+
+
+def create_test_fused_image(image_mosaic, test_constants):
+    test_image = np.zeros(
+        (image_mosaic.num_channels, *test_constants["EXPECTED_FUSED_SHAPE"]),
+        dtype=np.int16,
+    )
+    z_size, y_size, x_size = test_constants["TILE_SIZE"]
+
+    for tile in image_mosaic.tiles[-1::-1]:
+        test_image[
+            tile.channel_id,
+            tile.position[0] : tile.position[0] + z_size,
+            tile.position[1] : tile.position[1] + y_size,
+            tile.position[2] : tile.position[2] + x_size,
+        ] = tile.data_pyramid[0].compute()
+
+    return test_image
 
 
 def test_image_mosaic_init(image_mosaic, naive_bdv_directory, test_constants):
@@ -127,3 +148,140 @@ def test_data_for_napari(image_mosaic, test_constants):
     ):
         assert tile_data[0].shape == test_constants["TILE_SIZE"]
         assert (tile_data[1] == expected_pos).all()
+
+
+@pytest.mark.parametrize(
+    "output_file_name, fuse_function_name",
+    [
+        ("fused.zarr", "_fuse_to_zarr"),
+        ("fused.zarr", "_fuse_to_zarr"),
+        ("fused.zarr", "_fuse_to_zarr"),
+        ("fused.zarr", "_fuse_to_zarr"),
+        ("fused.h5", "_fuse_to_bdv_h5"),
+        ("fused.h5", "_fuse_to_bdv_h5"),
+        ("fused.h5", "_fuse_to_bdv_h5"),
+        ("fused.h5", "_fuse_to_bdv_h5"),
+    ],
+)
+def test_fuse(
+    image_mosaic, mocker, output_file_name, fuse_function_name, test_constants
+):
+    mock_fuse_function = mocker.patch(
+        f"brainglobe_stitch.image_mosaic.ImageMosaic.{fuse_function_name}",
+    )
+
+    image_mosaic.fuse(output_file_name)
+
+    mock_fuse_function.assert_called_once_with(
+        image_mosaic.xml_path.parent / output_file_name,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+    )
+
+
+@pytest.mark.parametrize(
+    "pyramid_depth, num_channels",
+    [(1, 1), (1, 2), (1, 5), (2, 1), (2, 2), (2, 5), (3, 1), (3, 2), (3, 5)],
+)
+def test_get_metadata_for_zarr(image_mosaic, pyramid_depth, num_channels):
+    backup_num_channels = image_mosaic.num_channels
+    image_mosaic.num_channels = num_channels
+
+    metadata, axes = image_mosaic.get_metadata_for_zarr(pyramid_depth)
+
+    if num_channels > 1:
+        assert len(axes) == 4
+        assert axes[0]["name"] == "c"
+        assert axes[0]["type"] == "channel"
+        axes.pop(0)
+    else:
+        assert len(axes) == 3
+
+    expected_axes_names = ["z", "y", "x"]
+
+    for idx, axes in enumerate(axes):
+        assert axes["name"] == expected_axes_names[idx]
+        assert axes["type"] == "space"
+        assert axes["unit"] == "micrometer"
+
+    for idx, transformation in enumerate(metadata):
+        assert transformation[0]["type"] == "scale"
+        expected_scale = [
+            image_mosaic.z_resolution,
+            image_mosaic.x_y_resolution * 2**idx,
+            image_mosaic.x_y_resolution * 2**idx,
+        ]
+        if num_channels > 1:
+            expected_scale.insert(0, 1)
+
+        assert transformation[0]["scale"] == expected_scale
+
+    image_mosaic.num_channels = backup_num_channels
+
+
+def test_fuse_to_zarr(image_mosaic, test_constants):
+    pyramid_depth = 3
+
+    output_file = image_mosaic.xml_path.parent / "fused.zarr"
+    fused_image_shape = test_constants["EXPECTED_FUSED_SHAPE"]
+
+    image_mosaic._fuse_to_zarr(output_file, fused_image_shape, pyramid_depth)
+
+    assert output_file.exists()
+    test_store = zarr.NestedDirectoryStore(str(output_file))
+    root = zarr.group(store=test_store)
+
+    assert root.attrs["multiscales"] is not None
+    assert root.attrs["multiscales"][0]["axes"] is not None
+    assert len(root.attrs["multiscales"][0]["datasets"]) == pyramid_depth
+    assert root.attrs["omero"] is not None
+    assert len(root.attrs["omero"]["channels"]) == image_mosaic.num_channels
+
+    downsample_shape = [image_mosaic.num_channels, *fused_image_shape]
+    assert root["0"].shape == tuple(downsample_shape)
+
+    for i in range(1, pyramid_depth):
+        downsample_shape[-2:] = [(x + 1) // 2 for x in downsample_shape[-2:]]
+        assert root[str(i)].shape == tuple(downsample_shape)
+
+    test_image = create_test_fused_image(image_mosaic, test_constants)
+
+    assert np.all(np.array(root["0"]) == test_image)
+
+
+def test_fuse_to_bdv_h5(image_mosaic, test_constants):
+    pyramid_depth = 3
+
+    output_file = image_mosaic.xml_path.parent / "fused.h5"
+    fused_image_shape = test_constants["EXPECTED_FUSED_SHAPE"]
+
+    image_mosaic._fuse_to_bdv_h5(output_file, fused_image_shape, pyramid_depth)
+
+    assert output_file.exists()
+    assert output_file.with_suffix(".xml").exists()
+
+    expected_resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
+    expected_subdivisions = np.tile(
+        np.array([32, 32, 16], dtype=np.int16), (pyramid_depth, 1)
+    )
+
+    for i in range(1, pyramid_depth):
+        expected_resolutions[i, :-1] = 2**i
+
+    test_image = create_test_fused_image(image_mosaic, test_constants)
+
+    with h5py.File(output_file, "r") as f:
+        assert len(f["t00000"].keys()) == image_mosaic.num_channels
+        # Extra group accounts for the t00000 group
+        assert len(f.keys()) == image_mosaic.num_channels + 1
+
+        for idx, tile_name in enumerate(f["t00000"].keys()):
+            assert np.all(
+                f[f"{tile_name}/resolutions"] == expected_resolutions
+            )
+            assert np.all(
+                f[f"{tile_name}/subdivisions"] == expected_subdivisions
+            )
+            assert len(f[f"t00000/{tile_name}"].keys()) == pyramid_depth
+            assert np.all(
+                f[f"t00000/{tile_name}/0/cells"] == test_image[idx, :, :, :]
+            )

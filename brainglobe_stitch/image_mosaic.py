@@ -553,7 +553,7 @@ class ImageMosaic:
 
             chunk_shape: Tuple[int, ...] = (128, 128, 128)
 
-            if (np.array(fused_image_shape) < 256).any():
+            if np.any(np.array(fused_image_shape) < chunk_shape):
                 chunk_shape = fused_image_shape
 
             # Create the datasets for each resolution level
@@ -572,6 +572,9 @@ class ImageMosaic:
                     (fused_image_shape[1] + 1) // 2**j,
                     (fused_image_shape[2] + 1) // 2**j,
                 )
+
+                if np.any(np.array(new_shape) < chunk_shape):
+                    chunk_shape = new_shape
 
                 down_ds = output_file.require_dataset(
                     f"t00000/s{i:02}/{j}/cells",

@@ -183,6 +183,7 @@ def test_constants(imagej_path):
             [6, 7, 118],
             [5, 123, 116],
         ],
+        "EXPECTED_FUSED_SHAPE": (113, 251, 246),
         "CHANNELS": ["561 nm", "647 nm"],
         "PIXEL_SIZE_XY": 4.08,
         "PIXEL_SIZE_Z": 5.0,
