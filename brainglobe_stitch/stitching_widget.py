@@ -13,6 +13,7 @@ from napari.utils.notifications import show_info, show_warning
 from qtpy.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -27,6 +28,7 @@ from brainglobe_stitch.file_utils import (
     create_pyramid_bdv_h5,
 )
 from brainglobe_stitch.image_mosaic import ImageMosaic
+from brainglobe_stitch.utils import calculate_thresholds
 
 
 def add_tiles_from_mosaic(
@@ -42,20 +44,8 @@ def add_tiles_from_mosaic(
     image_mosaic : ImageMosaic
         The ImageMosaic object containing the data for the tiles.
     """
-    middle_slice = napari_data[0][0].shape[0] // 2
-    thresholds: Dict[str, List[float]] = {}
-
-    for data, tile in zip(napari_data, image_mosaic.tiles):
-        tile_data, _ = data
-        curr_threshold = np.percentile(
-            tile_data[middle_slice].ravel(), 99
-        ).compute()[0]
-        threshold_list = thresholds.get(tile.channel_name, [])
-        threshold_list.append(curr_threshold)
-        thresholds[tile.channel_name] = threshold_list
-
-    final_thresholds: Dict[str, float] = dict(
-        (channel, np.max(thresholds.get(channel))) for channel in thresholds
+    final_thresholds: Dict[str, float] = calculate_thresholds(
+        image_mosaic.tiles
     )
 
     for data, tile_name, tile in zip(
@@ -122,6 +112,12 @@ class StitchingWidget(QWidget):
         The dropdown for selecting the channel to fuse.
     stitch_button : QPushButton
         The button for stitching the tiles.
+    fuse_option_widget : QWidget
+        The widget for the fuse options.
+    output_file_name_field : QLineEdit
+        The text field for the output file name.
+    fuse_button : QPushButton
+        The button for fusing the stitched tiles.
     """
 
     def __init__(self, napari_viewer: Viewer):
@@ -131,7 +127,7 @@ class StitchingWidget(QWidget):
         self.image_mosaic: Optional[ImageMosaic] = None
         self.imagej_path: Optional[Path] = None
         self.tile_layers: List[napari.layers.Image] = []
-        self.resolution_to_display: int = 3
+        self.resolution_to_display: int = 2
 
         self.setLayout(QVBoxLayout())
 
@@ -212,6 +208,19 @@ class StitchingWidget(QWidget):
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
 
+        self.fuse_option_widget = QWidget()
+        self.fuse_option_widget.setLayout(QFormLayout())
+        self.output_file_name_field = QLineEdit()
+        self.fuse_option_widget.layout().addRow(
+            "Output file name:", self.output_file_name_field
+        )
+
+        self.layout().addWidget(self.fuse_option_widget)
+
+        self.fuse_button = QPushButton("Fuse")
+        self.fuse_button.clicked.connect(self._on_fuse_button_clicked)
+        self.layout().addWidget(self.fuse_button)
+
         self.layout().addWidget(self.progress_bar)
 
     def _on_open_file_dialog_clicked(self):
@@ -263,6 +272,14 @@ class StitchingWidget(QWidget):
 
         self.fuse_channel_dropdown.clear()
         self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
+
+        min_size_display = np.array((256, 256, 256))
+        self.resolution_to_display = 0
+
+        for tile_data in self.image_mosaic.tiles[0].data_pyramid:
+            if np.any(tile_data.shape <= min_size_display):
+                break
+            self.resolution_to_display += 1
 
         napari_data = self.image_mosaic.data_for_napari(
             self.resolution_to_display
@@ -347,6 +364,24 @@ class StitchingWidget(QWidget):
         )
 
         self.update_tiles_from_mosaic(napari_data)
+
+    def _on_fuse_button_clicked(self):
+        if not self.output_file_name_field.text():
+            show_warning("Output file name not specified")
+            return
+
+        path = Path(self.output_file_name_field.text())
+        valid_extensions = [".zarr", ".h5"]
+
+        if path.suffix not in valid_extensions:
+            show_warning(
+                f"Output file name should either end with {valid_extensions}"
+            )
+            return
+
+        self.image_mosaic.fuse(
+            self.output_file_name_field.text(),
+        )
 
     def check_imagej_path(self):
         """
