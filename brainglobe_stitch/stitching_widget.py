@@ -375,7 +375,8 @@ class StitchingWidget(QWidget):
 
         if path.suffix not in valid_extensions:
             show_warning(
-                f"Output file name should either end with {valid_extensions}"
+                f"Output file name should end with "
+                f"{', '.join(valid_extensions)}"
             )
             return
 

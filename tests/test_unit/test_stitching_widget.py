@@ -187,32 +187,6 @@ def test_set_tile_layers_multiple(stitching_widget, num_layers):
     assert stitching_widget.tile_layers == test_layers
 
 
-@pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
-def test_on_fuse_button_clicked(
-    make_napari_viewer_proxy, naive_bdv_directory, mocker, file_name
-):
-    viewer = make_napari_viewer_proxy()
-    stitching_widget = StitchingWidget(viewer)
-
-    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
-
-    mock_fuse = mocker.patch(
-        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
-        autospec=True,
-    )
-
-    stitching_widget.output_file_name_field.setText(file_name)
-
-    stitching_widget._on_fuse_button_clicked()
-
-    mock_fuse.assert_called_once_with(
-        stitching_widget.image_mosaic,
-        file_name,
-        normalise_intensity=False,
-        interpolate=False,
-    )
-
-
 def test_check_and_load_mesospim_directory(
     stitching_widget, naive_bdv_directory
 ):
@@ -426,6 +400,27 @@ def test_update_tiles_from_mosaic(
         assert (tile.translate == test_data[1]).all()
 
 
+@pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
+def test_on_fuse_button_clicked(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker, file_name
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+
+    mock_fuse = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
+        autospec=True,
+    )
+
+    stitching_widget.output_file_name_field.setText(file_name)
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_fuse.assert_called_once_with(stitching_widget.image_mosaic, file_name)
+
+
 def test_on_fuse_button_clicked_no_file_name(
     make_napari_viewer_proxy, naive_bdv_directory, mocker
 ):
@@ -453,7 +448,7 @@ def test_on_fuse_button_clicked_wrong_suffix(
 
     stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
     stitching_widget.output_file_name_field.setText("fused_image.tif")
-    error_message = "Output file name should either end with .zarr or .h5"
+    error_message = "Output file name should end with .zarr, .h5"
 
     mock_show_warning = mocker.patch(
         "brainglobe_stitch.stitching_widget.show_warning",
