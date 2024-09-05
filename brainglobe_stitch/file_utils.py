@@ -1,3 +1,4 @@
+import copy
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Tuple, Union
@@ -363,3 +364,107 @@ def safe_find(root: ET.Element, query: str) -> ET.Element:
         raise ValueError(f"No element found for query {query}")
 
     return element
+
+
+def write_bdv_xml(
+    output_xml_path: Path,
+    input_xml_path: Path,
+    hdf5_path: Path,
+    image_size: Tuple[int, ...],
+    num_channels: int,
+) -> None:
+    """
+    Write a Big Data Viewer (BDV) XML file.
+
+    Parameters
+    ----------
+    output_xml_path: Path
+        The path to the output BDV XML file.
+    input_xml_path: Path
+        The path to the input BDV XML file.
+    hdf5_path:
+        The path to the output HDF5 file.
+    image_size:
+        The size of the image in pixels.
+    num_channels:
+        The number of channels in the image.
+    """
+    input_tree = ET.parse(input_xml_path)
+    input_root = input_tree.getroot()
+    base_path = safe_find(input_root, ".//BasePath")
+
+    root = ET.Element("SpimData", version="0.2")
+    root.append(base_path)
+
+    sequence_desc = ET.SubElement(root, "SequenceDescription")
+
+    image_loader = safe_find(input_root, ".//ImageLoader")
+    hdf5_path_node = safe_find(image_loader, ".//hdf5")
+    # Replace the hdf5 path with the new relative path
+    hdf5_path_node.text = str(hdf5_path.name)
+    sequence_desc.append(image_loader)
+
+    view_setup = safe_find(input_root, ".//ViewSetup")
+    # Replace the size of the image with the new size
+    view_setup[2].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
+
+    view_setups = ET.SubElement(sequence_desc, "ViewSetups")
+    view_setups.append(view_setup)
+
+    # Add the view setups for the other channels
+    for i in range(1, num_channels):
+        view_setup_copy = copy.deepcopy(view_setup)
+        view_setup_copy[0].text = f"{i}"
+        view_setup_copy[1].text = f"setup {i}"
+        view_setup_copy[4][1].text = f"{i}"
+        view_setups.append(view_setup_copy)
+
+    attributes_illumination = safe_find(
+        input_root, ".//Attributes[@name='illumination']"
+    )
+    view_setups.append(attributes_illumination)
+
+    attributes_channel = safe_find(
+        input_root, ".//Attributes[@name='channel']"
+    )
+    view_setups.append(attributes_channel)
+
+    attributes_tiles = ET.SubElement(view_setups, "Attributes", name="tile")
+    tile = safe_find(input_root, ".//Tile/[id='0']")
+    attributes_tiles.append(tile)
+
+    attributes_angles = safe_find(input_root, ".//Attributes[@name='angle']")
+    view_setups.append(attributes_angles)
+
+    timepoints = safe_find(input_root, ".//Timepoints")
+    sequence_desc.append(timepoints)
+
+    # Missing views are not necessary for the BDV XML
+    # May not be present in all BDV XML files
+    try:
+        missing_views = safe_find(input_root, ".//MissingViews")
+        sequence_desc.append(missing_views)
+    except ValueError as e:
+        print(e)
+
+    view_registrations = ET.SubElement(root, "ViewRegistrations")
+
+    # Write the calibrations for each channel
+    # Allows BDV to convert pixel coordinates to physical coordinates
+    for i in range(num_channels):
+        view_registration = ET.SubElement(
+            view_registrations,
+            "ViewRegistration",
+            attrib={"timepoint": "0", "setup": f"{i}"},
+        )
+        calibration = safe_find(
+            input_root, ".//ViewTransform/[Name='calibration']"
+        )
+        view_registration.append(calibration)
+
+    tree = ET.ElementTree(root)
+    # Add a two space indentation to the file
+    ET.indent(tree, space="  ")
+    tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
+
+    return
