@@ -172,9 +172,11 @@ def test_fuse(
 
     image_mosaic.fuse(output_file_name)
 
+    default_downscale_factors = (1, 2, 2)
     mock_fuse_function.assert_called_once_with(
         image_mosaic.xml_path.parent / output_file_name,
         test_constants["EXPECTED_FUSED_SHAPE"],
+        downscale_factors=default_downscale_factors,
     )
 
 
@@ -260,8 +262,11 @@ def test_fuse_to_bdv_h5(image_mosaic, test_constants):
     assert output_file.with_suffix(".xml").exists()
 
     expected_resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
-    expected_subdivisions = np.tile(
-        np.array([32, 32, 16], dtype=np.int16), (pyramid_depth, 1)
+    # Since one of the dimensions is less that the default chunk size of 128,
+    # the expected subdivisions are simply the shape of the image at each
+    # resolution level
+    expected_subdivisions = np.array(
+        [[246, 251, 113], [123, 126, 113], [62, 63, 113]], dtype=np.int16
     )
 
     for i in range(1, pyramid_depth):

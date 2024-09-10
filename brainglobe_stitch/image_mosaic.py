@@ -350,6 +350,7 @@ class ImageMosaic:
     def fuse(
         self,
         output_file_name: str = "fused.zarr",
+        downscale_factors: Tuple[int, int, int] = (1, 2, 2),
     ) -> None:
         """
         Fuse the tiles into a single image and save it to the output file.
@@ -358,6 +359,8 @@ class ImageMosaic:
         ----------
         output_file_name: str, default: "fused.zarr"
             The name of the output file, suffix dictates the output file type.
+        downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
+            The factors to downscale the image by in the z, y, x dimensions.
         """
         output_path = self.directory / output_file_name
 
@@ -370,9 +373,17 @@ class ImageMosaic:
         )
 
         if output_path.suffix == ".zarr":
-            self._fuse_to_zarr(output_path, fused_image_shape)
+            self._fuse_to_zarr(
+                output_path,
+                fused_image_shape,
+                downscale_factors=downscale_factors,
+            )
         elif output_path.suffix == ".h5":
-            self._fuse_to_bdv_h5(output_path, fused_image_shape)
+            self._fuse_to_bdv_h5(
+                output_path,
+                fused_image_shape,
+                downscale_factors=downscale_factors,
+            )
 
     def _fuse_to_zarr(
         self,
@@ -382,6 +393,7 @@ class ImageMosaic:
         chunk_shape: Tuple[int, ...] = (128, 128, 128),
         compression: str = "zstd",
         compression_level: int = 3,
+        downscale_factors: Tuple[int, int, int] = (1, 2, 2),
     ) -> None:
         """
         Fuse the tiles in the ImageMosaic into a single image and save it as a
@@ -393,7 +405,7 @@ class ImageMosaic:
             The path of the output file.
         fused_image_shape: Tuple[int, ...]
             The shape of the fused image.
-        pyramid_depth: int, default: 6
+        pyramid_depth: int, default: 5
             The depth of the resolution pyramid.
         chunk_shape: Tuple[int, ...], default: (128, 128, 128)
             The shape of the chunks in the zarr file.
@@ -401,11 +413,13 @@ class ImageMosaic:
             The compression algorithm to use.
         compression_level: int, default: 3
             The compression level to use.
+        downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
+            The factors to downscale the image by in the z, y, x dimensions.
         """
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
 
         transformation_metadata, axes_metadata = self.get_metadata_for_zarr(
-            pyramid_depth=pyramid_depth
+            pyramid_depth=pyramid_depth, downscale_factors=downscale_factors
         )
 
         if self.num_channels > 1:
@@ -451,11 +465,11 @@ class ImageMosaic:
 
             if self.num_channels > 1:
                 downsampled_image = downscale_nearest(
-                    prev_resolution, (1, 1, 2, 2)
+                    prev_resolution, (1, *downscale_factors)
                 )
             else:
                 downsampled_image = downscale_nearest(
-                    prev_resolution, (1, 2, 2)
+                    prev_resolution, downscale_factors
                 )
 
             downsampled_shape = downsampled_image.shape
@@ -508,6 +522,7 @@ class ImageMosaic:
         output_path: Path,
         fused_image_shape: Tuple[int, ...],
         pyramid_depth: int = 5,
+        downscale_factors: Tuple[int, int, int] = (1, 2, 2),
     ) -> None:
         """
         Fuse the tiles in the ImageMosaic into a single image and save it as a
@@ -519,24 +534,24 @@ class ImageMosaic:
             The path of the output file.
         fused_image_shape: Tuple[int, ...]
             The shape of the fused image.
-        pyramid_depth: int, default: 6
+        pyramid_depth: int, default: 5
             The depth of the resolution pyramid.
+        downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
+            The factors to downscale the image by in the z, y, x dimensions.
         """
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         output_file = h5py.File(output_path, mode="w")
 
         # Metadata is in x, y, z order for Big Data Viewer
-        subdivision = np.array([32, 32, 16], dtype=np.int16)
-        subdivisions = np.tile(subdivision, (pyramid_depth, 1))
-
-        # Only downsampling in the x and y dimensions
+        downscale_factors_array = np.array(downscale_factors)
         resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
 
         for i in range(1, pyramid_depth):
-            resolutions[i, :-1] = 2**i
+            resolutions[i, :] = downscale_factors_array[-1::-1] ** i
 
         channel_ds_list: List[List[h5py.Dataset]] = []
         for i in range(self.num_channels):
+            chunk_shape: Tuple[int, ...] = (128, 128, 128)
             # Write the resolutions and subdivisions for each channel
             output_file.require_dataset(
                 f"s{i:02}/resolutions",
@@ -544,14 +559,11 @@ class ImageMosaic:
                 dtype="i2",
                 shape=resolutions.shape,
             )
-            output_file.require_dataset(
+            output_file.create_dataset(
                 f"s{i:02}/subdivisions",
-                data=subdivisions,
                 dtype="i2",
-                shape=subdivisions.shape,
+                shape=resolutions.shape,
             )
-
-            chunk_shape: Tuple[int, ...] = (128, 128, 128)
 
             if np.any(np.array(fused_image_shape) < chunk_shape):
                 chunk_shape = fused_image_shape
@@ -565,14 +577,19 @@ class ImageMosaic:
                 dtype="i2",
             )
             ds_list.append(ds)
+            # Set the chunk shape for the first resolution level
+            # Flip the shape to match the x, y, z order
+            output_file[f"s{i:02}/subdivisions"][0] = chunk_shape[::-1]
+            new_shape = (
+                (fused_image_shape[0] + (downscale_factors[0] > 1))
+                // downscale_factors[0],
+                (fused_image_shape[1] + (downscale_factors[1] > 1))
+                // downscale_factors[1],
+                (fused_image_shape[2] + (downscale_factors[2] > 1))
+                // downscale_factors[2],
+            )
 
             for j in range(1, len(resolutions)):
-                new_shape = (
-                    fused_image_shape[0],
-                    (fused_image_shape[1] + 1) // 2**j,
-                    (fused_image_shape[2] + 1) // 2**j,
-                )
-
                 if np.any(np.array(new_shape) < chunk_shape):
                     chunk_shape = new_shape
 
@@ -584,6 +601,18 @@ class ImageMosaic:
                 )
 
                 ds_list.append(down_ds)
+                # Set the chunk shape for the other resolution levels
+                # Flip the shape to match the x, y, z order
+                output_file[f"s{i:02}/subdivisions"][j] = chunk_shape[::-1]
+
+                new_shape = (
+                    (new_shape[0] + (downscale_factors[0] > 1))
+                    // downscale_factors[0],
+                    (new_shape[1] + (downscale_factors[1] > 1))
+                    // downscale_factors[1],
+                    (new_shape[2] + (downscale_factors[2] > 1))
+                    // downscale_factors[2],
+                )
 
             channel_ds_list.append(ds_list)
 
@@ -600,9 +629,9 @@ class ImageMosaic:
             for i in range(1, len(resolutions)):
                 scaled_position = tile.position // resolutions[i, -1::-1]
                 scaled_size = (
-                    z_size // resolutions[i][2],
-                    (y_size + 1) // resolutions[i][1],
-                    (x_size + 1) // resolutions[i][0],
+                    (z_size + (resolutions[i][2] > 1)) // resolutions[i][2],
+                    (y_size + (resolutions[i][1] > 1)) // resolutions[i][1],
+                    (x_size + (resolutions[i][0] > 1)) // resolutions[i][0],
                 )
                 channel_ds_list[tile.channel_id][i][
                     scaled_position[0] : scaled_position[0] + scaled_size[0],
@@ -629,7 +658,9 @@ class ImageMosaic:
         output_file.close()
 
     def get_metadata_for_zarr(
-        self, pyramid_depth: int = 6
+        self,
+        pyramid_depth: int = 6,
+        downscale_factors: Tuple[int, int, int] = (1, 2, 2),
     ) -> Tuple[List[List[Dict]], List[Dict]]:
         """
         Prepare the metadata for a zarr file.
@@ -638,6 +669,8 @@ class ImageMosaic:
         ----------
         pyramid_depth: int
             The depth of the resolution pyramid.
+        downscale_factors: Tuple[int, int, int]
+            The factors to downscale the image by in the z, y, x dimensions.
 
         Returns
         -------
@@ -650,7 +683,6 @@ class ImageMosaic:
             {"name": "x", "type": "space", "unit": "micrometer"},
         ]
 
-        # Assumes z is never downsampled
         coordinate_transformations = []
         for i in range(pyramid_depth):
             coordinate_transformations.append(
@@ -658,9 +690,9 @@ class ImageMosaic:
                     {
                         "type": "scale",
                         "scale": [
-                            self.z_resolution,
-                            self.x_y_resolution * 2**i,
-                            self.x_y_resolution * 2**i,
+                            self.z_resolution * downscale_factors[0] ** i,
+                            self.x_y_resolution * downscale_factors[1] ** i,
+                            self.x_y_resolution * downscale_factors[2] ** i,
                         ],
                     }
                 ]
