@@ -406,6 +406,7 @@ def write_bdv_xml(
 
     view_setup = safe_find(input_root, ".//ViewSetup")
     # Replace the size of the image with the new size
+    # The image shape is in z,y,x order, metadata needs to be in x,y,z order
     view_setup[2].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
 
     view_setups = ET.SubElement(sequence_desc, "ViewSetups")
@@ -466,5 +467,3 @@ def write_bdv_xml(
     # Add a two space indentation to the file
     ET.indent(tree, space="  ")
     tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
-
-    return
