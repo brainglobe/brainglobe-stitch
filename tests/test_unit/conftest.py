@@ -199,6 +199,11 @@ def test_constants(imagej_path):
         "MOCK_XML_PATH": Path.home() / "stitching/Brain2/bdv.xml",
         "MOCK_TILE_CONFIG_PATH": Path.home()
         / "stitching/Brain2/bdv_tile_config.txt",
+        "DEFAULT_PYRAMID_DEPTH": 5,
+        "DEFAULT_DOWNSAMPLE_FACTORS": (1, 2, 2),
+        "DEFAULT_CHUNK_SHAPE": (128, 128, 128),
+        "DEFAULT_COMPRESSION_METHOD": "zstd",
+        "DEFAULT_COMPRESSION_LEVEL": 3,
     }
 
     return constants_dict

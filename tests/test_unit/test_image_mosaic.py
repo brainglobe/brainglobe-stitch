@@ -150,33 +150,39 @@ def test_data_for_napari(image_mosaic, test_constants):
         assert (tile_data[1] == expected_pos).all()
 
 
-@pytest.mark.parametrize(
-    "output_file_name, fuse_function_name",
-    [
-        ("fused.zarr", "_fuse_to_zarr"),
-        ("fused.zarr", "_fuse_to_zarr"),
-        ("fused.zarr", "_fuse_to_zarr"),
-        ("fused.zarr", "_fuse_to_zarr"),
-        ("fused.h5", "_fuse_to_bdv_h5"),
-        ("fused.h5", "_fuse_to_bdv_h5"),
-        ("fused.h5", "_fuse_to_bdv_h5"),
-        ("fused.h5", "_fuse_to_bdv_h5"),
-    ],
-)
-def test_fuse(
-    image_mosaic, mocker, output_file_name, fuse_function_name, test_constants
-):
+def test_fuse_bdv_h5(image_mosaic, mocker, test_constants):
     mock_fuse_function = mocker.patch(
-        f"brainglobe_stitch.image_mosaic.ImageMosaic.{fuse_function_name}",
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
+    )
+    file_name = "fused.h5"
+
+    image_mosaic.fuse(file_name)
+    mock_fuse_function.assert_called_once_with(
+        image_mosaic.xml_path.parent / file_name,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
     )
 
-    image_mosaic.fuse(output_file_name)
 
-    default_downscale_factors = (1, 2, 2)
-    mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / output_file_name,
+def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
+    file_name = "fused.zarr"
+
+    mock_fuse_to_zarr = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
+    )
+
+    image_mosaic.fuse(file_name)
+
+    mock_fuse_to_zarr.assert_called_once_with(
+        image_mosaic.xml_path.parent / file_name,
         test_constants["EXPECTED_FUSED_SHAPE"],
-        downscale_factors=default_downscale_factors,
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
     )
 
 
@@ -184,11 +190,16 @@ def test_fuse(
     "pyramid_depth, num_channels",
     [(1, 1), (1, 2), (1, 5), (2, 1), (2, 2), (2, 5), (3, 1), (3, 2), (3, 5)],
 )
-def test_get_metadata_for_zarr(image_mosaic, pyramid_depth, num_channels):
+def test_get_metadata_for_zarr(
+    image_mosaic, pyramid_depth, num_channels, test_constants
+):
     backup_num_channels = image_mosaic.num_channels
     image_mosaic.num_channels = num_channels
 
-    metadata, axes = image_mosaic.get_metadata_for_zarr(pyramid_depth)
+    metadata, axes = image_mosaic._generate_metadata_for_zarr(
+        pyramid_depth,
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+    )
 
     if num_channels > 1:
         assert len(axes) == 4
@@ -226,7 +237,15 @@ def test_fuse_to_zarr(image_mosaic, test_constants):
     output_file = image_mosaic.xml_path.parent / "fused.zarr"
     fused_image_shape = test_constants["EXPECTED_FUSED_SHAPE"]
 
-    image_mosaic._fuse_to_zarr(output_file, fused_image_shape, pyramid_depth)
+    image_mosaic._fuse_to_zarr(
+        output_file,
+        fused_image_shape,
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        pyramid_depth,
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
+    )
 
     assert output_file.exists()
     test_store = zarr.NestedDirectoryStore(str(output_file))
@@ -256,7 +275,13 @@ def test_fuse_to_bdv_h5(image_mosaic, test_constants):
     output_file = image_mosaic.xml_path.parent / "fused.h5"
     fused_image_shape = test_constants["EXPECTED_FUSED_SHAPE"]
 
-    image_mosaic._fuse_to_bdv_h5(output_file, fused_image_shape, pyramid_depth)
+    image_mosaic._fuse_to_bdv_h5(
+        output_file,
+        fused_image_shape,
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        pyramid_depth,
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+    )
 
     assert output_file.exists()
     assert output_file.with_suffix(".xml").exists()
