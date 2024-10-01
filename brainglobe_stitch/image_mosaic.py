@@ -442,9 +442,8 @@ class ImageMosaic:
             self._generate_metadata_for_zarr(pyramid_depth, downscale_factors)
         )
 
-        if self.num_channels > 1:
-            fused_image_shape = (self.num_channels, *fused_image_shape)
-            chunk_shape = (self.num_channels, *chunk_shape)
+        fused_image_shape = (self.num_channels, *fused_image_shape)
+        chunk_shape = (self.num_channels, *chunk_shape)
 
         store = zarr.NestedDirectoryStore(str(output_path))
         root = zarr.group(store=store)
@@ -464,19 +463,12 @@ class ImageMosaic:
 
         # Place the tiles in reverse order of acquisition
         for tile in self.tiles[-1::-1]:
-            if self.num_channels > 1:
-                fused_image_store[
-                    tile.channel_id,
-                    tile.position[0] : tile.position[0] + z_size,
-                    tile.position[1] : tile.position[1] + y_size,
-                    tile.position[2] : tile.position[2] + x_size,
-                ] = tile.data_pyramid[0].compute()
-            else:
-                fused_image_store[
-                    tile.position[0] : tile.position[0] + z_size,
-                    tile.position[1] : tile.position[1] + y_size,
-                    tile.position[2] : tile.position[2] + x_size,
-                ] = tile.data_pyramid[0].compute()
+            fused_image_store[
+                tile.channel_id,
+                tile.position[0] : tile.position[0] + z_size,
+                tile.position[1] : tile.position[1] + y_size,
+                tile.position[2] : tile.position[2] + x_size,
+            ] = tile.data_pyramid[0].compute()
 
             print(f"Done tile {tile.id}")
 
@@ -485,11 +477,7 @@ class ImageMosaic:
                 root[str(i - 1)], chunks=chunk_shape
             )
 
-            factors = (
-                (1, *downscale_factors)
-                if self.num_channels > 1
-                else downscale_factors
-            )
+            factors = (1, *downscale_factors)
             downsampled_image = downscale_nearest(prev_resolution, factors)
 
             downsampled_shape = downsampled_image.shape
@@ -692,6 +680,7 @@ class ImageMosaic:
             A tuple with the coordinate transformations and axes metadata.
         """
         axes = [
+            {"name": "c", "type": "channel"},
             {"name": "z", "type": "space", "unit": "micrometer"},
             {"name": "y", "type": "space", "unit": "micrometer"},
             {"name": "x", "type": "space", "unit": "micrometer"},
@@ -704,6 +693,7 @@ class ImageMosaic:
                     {
                         "type": "scale",
                         "scale": [
+                            1.0,
                             self.z_resolution * downscale_factors[0] ** i,
                             self.x_y_resolution * downscale_factors[1] ** i,
                             self.x_y_resolution * downscale_factors[2] ** i,
@@ -711,16 +701,6 @@ class ImageMosaic:
                     }
                 ]
             )
-
-        # Add metadata for channel axis
-        if self.num_channels > 1:
-            axes = [
-                {"name": "c", "type": "channel"},
-                *axes,
-            ]
-
-            for transform in coordinate_transformations:
-                transform[0]["scale"] = [1.0, *transform[0]["scale"]]
 
         return coordinate_transformations, axes
 

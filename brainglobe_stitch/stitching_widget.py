@@ -127,7 +127,7 @@ class StitchingWidget(QWidget):
         self.image_mosaic: Optional[ImageMosaic] = None
         self.imagej_path: Optional[Path] = None
         self.tile_layers: List[napari.layers.Image] = []
-        self.resolution_to_display: int = 2
+        self.resolution_to_display: int = 3
 
         self.setLayout(QVBoxLayout())
 
