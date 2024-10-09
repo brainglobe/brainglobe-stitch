@@ -12,6 +12,8 @@ HEADERS = [
     "[ETL PARAMETERS]",
     "[GALVO PARAMETERS]",
     "[CAMERA PARAMETERS]",
+    "[TIMING INFORMATION]",
+    "[===================== END OF ACQUISITION ======================]",
 ]
 
 

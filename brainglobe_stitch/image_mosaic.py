@@ -158,7 +158,9 @@ class ImageMosaic:
 
         self.channel_names = []
         idx = 0
-        while self.tile_metadata[idx]["Laser"] not in self.channel_names:
+        while (idx < len(self.tile_metadata)) and (
+            self.tile_metadata[idx]["Laser"] not in self.channel_names
+        ):
             self.channel_names.append(self.tile_metadata[idx]["Laser"])
             idx += 1
 
