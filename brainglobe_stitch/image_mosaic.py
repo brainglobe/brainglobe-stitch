@@ -666,6 +666,8 @@ class ImageMosaic:
         Prepare the metadata for a zarr file. The metadata conforms to the
         OME-Zarr specification (https://ngff.openmicroscopy.org/latest/).
 
+        Generates the coordinate transformations and axes metadata to be
+        written to the fused zarr file.
         Parameters
         ----------
         pyramid_depth: int
