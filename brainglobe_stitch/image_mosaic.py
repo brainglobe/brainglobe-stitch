@@ -1,6 +1,8 @@
+import copy
 from pathlib import Path
 from time import sleep
 from typing import Dict, List, Optional, Tuple
+from xml.etree import ElementTree as ET
 
 import dask.array as da
 import h5py
@@ -19,7 +21,6 @@ from brainglobe_stitch.file_utils import (
     get_big_stitcher_transforms,
     get_slice_attributes,
     parse_mesospim_metadata,
-    write_bdv_xml,
 )
 from brainglobe_stitch.tile import Tile
 from brainglobe_stitch.utils import calculate_thresholds
@@ -648,12 +649,10 @@ class ImageMosaic:
 
         assert self.xml_path is not None
 
-        write_bdv_xml(
+        self._write_bdv_xml(
             output_path.with_suffix(".xml"),
-            self.xml_path,
             output_path,
             fused_image_shape,
-            self.num_channels,
         )
 
         output_file.close()
@@ -704,6 +703,111 @@ class ImageMosaic:
 
         return coordinate_transformations, axes
 
+    def _write_bdv_xml(
+        self,
+        output_xml_path: Path,
+        hdf5_path: Path,
+        image_size: Tuple[int, ...],
+    ) -> None:
+        """
+        Write a Big Data Viewer (BDV) XML file.
+
+        Parameters
+        ----------
+        output_xml_path: Path
+            The path to the output BDV XML file.
+        hdf5_path:
+            The path to the output HDF5 file.
+        image_size:
+            The size of the image in pixels.
+        """
+        if self.xml_path is None:
+            raise ValueError("No input XML file provided.")
+
+        input_tree = ET.parse(self.xml_path)
+        input_root = input_tree.getroot()
+        base_path = safe_find(input_root, ".//BasePath")
+
+        root = ET.Element("SpimData", version="0.2")
+        root.append(base_path)
+
+        sequence_desc = ET.SubElement(root, "SequenceDescription")
+
+        image_loader = safe_find(input_root, ".//ImageLoader")
+        hdf5_path_node = safe_find(image_loader, ".//hdf5")
+        # Replace the hdf5 path with the new relative path
+        hdf5_path_node.text = str(hdf5_path.name)
+        sequence_desc.append(image_loader)
+
+        view_setup = safe_find(input_root, ".//ViewSetup")
+        # Replace the size of the image with the new size
+        # The image shape is in z,y,x order,
+        # metadata needs to be in x,y,z order
+        view_setup[2].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
+
+        view_setups = ET.SubElement(sequence_desc, "ViewSetups")
+        view_setups.append(view_setup)
+
+        # Add the view setups for the other channels
+        for i in range(1, self.num_channels):
+            view_setup_copy = copy.deepcopy(view_setup)
+            view_setup_copy[0].text = f"{i}"
+            view_setup_copy[1].text = f"setup {i}"
+            view_setup_copy[4][1].text = f"{i}"
+            view_setups.append(view_setup_copy)
+
+        attributes_illumination = safe_find(
+            input_root, ".//Attributes[@name='illumination']"
+        )
+        view_setups.append(attributes_illumination)
+
+        attributes_channel = safe_find(
+            input_root, ".//Attributes[@name='channel']"
+        )
+        view_setups.append(attributes_channel)
+
+        attributes_tiles = ET.SubElement(
+            view_setups, "Attributes", name="tile"
+        )
+        tile = safe_find(input_root, ".//Tile/[id='0']")
+        attributes_tiles.append(tile)
+
+        attributes_angles = safe_find(
+            input_root, ".//Attributes[@name='angle']"
+        )
+        view_setups.append(attributes_angles)
+
+        timepoints = safe_find(input_root, ".//Timepoints")
+        sequence_desc.append(timepoints)
+
+        # Missing views are not necessary for the BDV XML
+        # May not be present in all BDV XML files
+        try:
+            missing_views = safe_find(input_root, ".//MissingViews")
+            sequence_desc.append(missing_views)
+        except ValueError as e:
+            print(e)
+
+        view_registrations = ET.SubElement(root, "ViewRegistrations")
+
+        # Write the calibrations for each channel
+        # Allows BDV to convert pixel coordinates to physical coordinates
+        for i in range(self.num_channels):
+            view_registration = ET.SubElement(
+                view_registrations,
+                "ViewRegistration",
+                attrib={"timepoint": "0", "setup": f"{i}"},
+            )
+            calibration = safe_find(
+                input_root, ".//ViewTransform/[Name='calibration']"
+            )
+            view_registration.append(calibration)
+
+        tree = ET.ElementTree(root)
+        # Add a two space indentation to the file
+        ET.indent(tree, space="  ")
+        tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
+
 
 def calculate_downsampled_image_shape(
     image_shape: Tuple[int, int, int], downscale_factors: Tuple[int, int, int]
@@ -715,3 +819,56 @@ def calculate_downsampled_image_shape(
     )
 
     return new_shape
+
+
+def safe_find_all(root: ET.Element, query: str) -> List[ET.Element]:
+    """
+    Find all elements matching a query in an ElementTree root. If no
+    elements are found, return an empty list.
+
+    Parameters
+    ----------
+    root : ET.Element
+        The root of the ElementTree.
+    query : str
+        The query to search for.
+
+    Returns
+    -------
+    List[ET.Element]
+        A list of elements matching the query.
+    """
+    elements = root.findall(query)
+    if elements is None:
+        return []
+
+    return elements
+
+
+def safe_find(root: ET.Element, query: str) -> ET.Element:
+    """
+    Find the first element matching a query in an ElementTree root.
+    Raise a ValueError if no element found.
+
+    Parameters
+    ----------
+    root : ET.Element
+        The root of the ElementTree.
+    query : str
+        The query to search for.
+
+    Returns
+    -------
+    ET.Element
+        The element matching the query or None.
+
+    Raises
+    ------
+    ValueError
+        If no element is found.
+    """
+    element = root.find(query)
+    if element is None or element.text is None:
+        raise ValueError(f"No element found for query {query}")
+
+    return element
