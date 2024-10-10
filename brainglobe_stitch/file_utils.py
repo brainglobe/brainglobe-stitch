@@ -6,8 +6,6 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 
-from brainglobe_stitch.image_mosaic import safe_find, safe_find_all
-
 HEADERS = [
     "[POSITION]",
     "[ETL PARAMETERS]",
@@ -312,3 +310,56 @@ def get_big_stitcher_transforms(xml_path: Path) -> npt.NDArray:
     translations = norm_grids + deltas + max_delta
 
     return translations
+
+
+def safe_find_all(root: ET.Element, query: str) -> List[ET.Element]:
+    """
+    Find all elements matching a query in an ElementTree root. If no
+    elements are found, return an empty list.
+
+    Parameters
+    ----------
+    root : ET.Element
+        The root of the ElementTree.
+    query : str
+        The query to search for.
+
+    Returns
+    -------
+    List[ET.Element]
+        A list of elements matching the query.
+    """
+    elements = root.findall(query)
+    if elements is None:
+        return []
+
+    return elements
+
+
+def safe_find(root: ET.Element, query: str) -> ET.Element:
+    """
+    Find the first element matching a query in an ElementTree root.
+    Raise a ValueError if no element found.
+
+    Parameters
+    ----------
+    root : ET.Element
+        The root of the ElementTree.
+    query : str
+        The query to search for.
+
+    Returns
+    -------
+    ET.Element
+        The element matching the query or None.
+
+    Raises
+    ------
+    ValueError
+        If no element is found.
+    """
+    element = root.find(query)
+    if element is None or element.text is None:
+        raise ValueError(f"No element found for query {query}")
+
+    return element
