@@ -210,7 +210,7 @@ def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
     "pyramid_depth, num_channels",
     [(1, 1), (1, 2), (1, 5), (2, 1), (2, 2), (2, 5), (3, 1), (3, 2), (3, 5)],
 )
-def test_get_metadata_for_zarr(
+def test_generate_metadata_for_zarr(
     image_mosaic, pyramid_depth, num_channels, test_constants
 ):
     backup_num_channels = image_mosaic.num_channels
@@ -221,13 +221,10 @@ def test_get_metadata_for_zarr(
         test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
     )
 
-    if num_channels > 1:
-        assert len(axes) == 4
-        assert axes[0]["name"] == "c"
-        assert axes[0]["type"] == "channel"
-        axes.pop(0)
-    else:
-        assert len(axes) == 3
+    assert len(axes) == 4
+    assert axes[0]["name"] == "c"
+    assert axes[0]["type"] == "channel"
+    axes.pop(0)
 
     expected_axes_names = ["z", "y", "x"]
 
@@ -239,12 +236,11 @@ def test_get_metadata_for_zarr(
     for idx, transformation in enumerate(metadata):
         assert transformation[0]["type"] == "scale"
         expected_scale = [
+            1,
             image_mosaic.z_resolution,
             image_mosaic.x_y_resolution * 2**idx,
             image_mosaic.x_y_resolution * 2**idx,
         ]
-        if num_channels > 1:
-            expected_scale.insert(0, 1)
 
         assert transformation[0]["scale"] == expected_scale
 

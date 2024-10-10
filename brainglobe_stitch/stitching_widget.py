@@ -317,13 +317,16 @@ class StitchingWidget(QWidget):
             ) = check_mesospim_directory(self.working_directory)
             with h5py.File(self.h5_path, "r") as f:
                 if len(f["t00000/s00"].keys()) <= 1:
-                    show_warning("Resolution pyramid not found")
+                    error_message = "Resolution pyramid not found"
+                    show_warning(error_message)
+                    display_info(self, "Warning", error_message)
                     self.create_pyramid_button.setEnabled(True)
                 else:
                     self.add_tiles_button.setEnabled(True)
         except FileNotFoundError:
-            show_warning("mesoSPIM directory not valid")
-            display_info(self, "Warning", "mesoSPIM directory not valid")
+            error_message = "mesoSPIM directory not valid"
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
 
     def _on_open_file_dialog_imagej_clicked(self) -> None:
         """
@@ -349,17 +352,15 @@ class StitchingWidget(QWidget):
         Stitch the tiles in the viewer using BigStitcher.
         """
         if self.image_mosaic is None:
-            show_warning("Open a mesoSPIM directory prior to stitching")
-            display_info(
-                self, "Warning", "Open a mesoSPIM directory prior to stitching"
-            )
+            error_message = "Open a mesoSPIM directory prior to stitching"
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
             return
 
         if not self.imagej_path:
-            show_warning("Select the ImageJ path prior to stitching")
-            display_info(
-                self, "Warning", "Select the ImageJ path prior to stitching"
-            )
+            error_message = "Select the ImageJ path prior to stitching"
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
             return
 
         self.image_mosaic.stitch(
@@ -379,31 +380,27 @@ class StitchingWidget(QWidget):
 
     def _on_fuse_button_clicked(self) -> None:
         if not self.output_file_name_field.text():
-            show_warning("Output file name not specified")
-            display_info(self, "Warning", "Output file name not specified")
+            error_message = "Output file name not specified"
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
             return
 
         if self.image_mosaic is None:
-            show_warning("Open a mesoSPIM directory prior to stitching")
-            display_info(
-                self, "Warning", "Open a mesoSPIM directory prior to stitching"
-            )
+            error_message = "Open a mesoSPIM directory prior to stitching"
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
             return
 
         path = Path(self.output_file_name_field.text())
         valid_extensions = [".zarr", ".h5"]
 
         if path.suffix not in valid_extensions:
-            show_warning(
+            error_message = (
                 f"Output file name should end with "
                 f"{', '.join(valid_extensions)}"
             )
-            display_info(
-                self,
-                "Warning",
-                f"Output file name should end with "
-                f"{', '.join(valid_extensions)}",
-            )
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
             return
 
         self.image_mosaic.fuse(
@@ -418,16 +415,12 @@ class StitchingWidget(QWidget):
         if self.imagej_path and self.imagej_path.is_file():
             self.stitch_button.setEnabled(True)
         else:
-            show_warning(
+            error_message = (
                 "ImageJ path not valid. "
                 "Please select a valid path to the imageJ executable."
             )
-            display_info(
-                self,
-                "Warning",
-                "ImageJ path not valid. "
-                "Please select a valid path to the imageJ executable.",
-            )
+            show_warning(error_message)
+            display_info(self, "Warning", error_message)
 
     def update_tiles_from_mosaic(
         self, napari_data: List[Tuple[da.Array, npt.NDArray]]
