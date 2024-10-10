@@ -57,7 +57,7 @@ def test_stitching_widget_init(make_napari_viewer_proxy):
     Test that the StitchingWidget is correctly initialized with the viewer
     Currently tests that the viewer is correctly stored, the image_mosaic is
     None, the tile_layers list is empty, and the resolution_to_display.
-    is set to 3.
+    is set to 2.
     """
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
@@ -224,10 +224,18 @@ def test_check_and_load_mesospim_directory_no_pyramid(
     mock_show_warning = mocker.patch(
         "brainglobe_stitch.stitching_widget.show_warning"
     )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+    error_message = "Resolution pyramid not found"
 
     stitching_widget.check_and_load_mesospim_directory()
 
-    mock_show_warning.assert_called_once_with("Resolution pyramid not found")
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
     assert not stitching_widget.add_tiles_button.isEnabled()
     assert stitching_widget.create_pyramid_button.isEnabled()
 
@@ -254,11 +262,19 @@ def test_check_and_load_mesospim_directory_missing_files(
     mock_show_warning = mocker.patch(
         "brainglobe_stitch.stitching_widget.show_warning"
     )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+
     (bdv_directory_function_level / file_to_remove).unlink()
 
     stitching_widget.check_and_load_mesospim_directory()
 
     mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
 
 
 def test_on_open_file_dialog_imagej_clicked(stitching_widget, mocker):
@@ -303,7 +319,7 @@ def test_on_imagej_path_text_edited(stitching_widget, mocker):
 
 
 def test_on_stitch_button_clicked(
-    stitching_widget_with_mosaic, naive_bdv_directory, mocker
+    stitching_widget_with_mosaic, naive_bdv_directory, test_constants, mocker
 ):
     """
     Uses the stitching_widget_with_mosaic fixture to create a StitchingWidget
@@ -313,6 +329,7 @@ def test_on_stitch_button_clicked(
     method of the ImageMosaic object with the correct arguments.
     """
     stitching_widget = stitching_widget_with_mosaic
+    stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
     mock_stitch_function = mocker.patch(
         "brainglobe_stitch.stitching_widget.ImageMosaic.stitch",
@@ -357,6 +374,10 @@ def test_check_imagej_path_invalid(stitching_widget, mocker):
     mock_show_warning = mocker.patch(
         "brainglobe_stitch.stitching_widget.show_warning"
     )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
     error_message = (
         "ImageJ path not valid. "
         "Please select a valid path to the imageJ executable."
@@ -365,6 +386,9 @@ def test_check_imagej_path_invalid(stitching_widget, mocker):
     stitching_widget.check_imagej_path()
 
     mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
 
 
 def test_update_tiles_from_mosaic(
@@ -398,3 +422,77 @@ def test_update_tiles_from_mosaic(
     for tile, test_data in zip(stitching_widget.tile_layers, test_data):
         assert (tile.data == test_data[0]).all()
         assert (tile.translate == test_data[1]).all()
+
+
+@pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
+def test_on_fuse_button_clicked(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker, file_name
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+
+    mock_fuse = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
+        autospec=True,
+    )
+
+    stitching_widget.output_file_name_field.setText(file_name)
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_fuse.assert_called_once_with(stitching_widget.image_mosaic, file_name)
+
+
+def test_on_fuse_button_clicked_no_file_name(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    error_message = "Output file name not specified"
+
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning",
+        autospec=True,
+    )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
+
+
+def test_on_fuse_button_clicked_wrong_suffix(
+    make_napari_viewer_proxy, naive_bdv_directory, mocker
+):
+    viewer = make_napari_viewer_proxy()
+    stitching_widget = StitchingWidget(viewer)
+
+    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    stitching_widget.output_file_name_field.setText("fused_image.tif")
+    error_message = "Output file name should end with .zarr, .h5"
+
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning",
+        autospec=True,
+    )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+
+    stitching_widget._on_fuse_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
