@@ -32,7 +32,27 @@ def image_mosaic(naive_bdv_directory):
     image_mosaic.__del__()
 
 
-def create_test_fused_image(image_mosaic, test_constants):
+@pytest.fixture(scope="module")
+def fused_image(image_mosaic, test_constants):
+    """
+    Fixture for creating a fused image for testing. The fused image is created
+    by iterating over the tiles in the image mosaic and placing them in
+    reverse order of acquisition. This is used as a ground truth for testing
+    the fusion functions.
+
+
+    Parameters
+    ----------
+    image_mosaic
+        ImageMosaic object loaded with test data.
+    test_constants
+        Dictionary containing constants for testing.
+
+    Returns
+    -------
+    np.ndarray
+        A 4D numpy array representing the fused image.
+    """
     test_image = np.zeros(
         (image_mosaic.num_channels, *test_constants["EXPECTED_FUSED_SHAPE"]),
         dtype=np.int16,
@@ -231,7 +251,7 @@ def test_get_metadata_for_zarr(
     image_mosaic.num_channels = backup_num_channels
 
 
-def test_fuse_to_zarr(image_mosaic, test_constants):
+def test_fuse_to_zarr(image_mosaic, test_constants, fused_image):
     pyramid_depth = 3
 
     output_file = image_mosaic.xml_path.parent / "fused.zarr"
@@ -264,12 +284,10 @@ def test_fuse_to_zarr(image_mosaic, test_constants):
         downsample_shape[-2:] = [(x + 1) // 2 for x in downsample_shape[-2:]]
         assert root[str(i)].shape == tuple(downsample_shape)
 
-    test_image = create_test_fused_image(image_mosaic, test_constants)
-
-    assert np.all(np.array(root["0"]) == test_image)
+    assert np.array_equal(np.array(root["0"]), fused_image)
 
 
-def test_fuse_to_bdv_h5(image_mosaic, test_constants):
+def test_fuse_to_bdv_h5(image_mosaic, test_constants, fused_image):
     pyramid_depth = 3
 
     output_file = image_mosaic.xml_path.parent / "fused.h5"
@@ -297,8 +315,6 @@ def test_fuse_to_bdv_h5(image_mosaic, test_constants):
     for i in range(1, pyramid_depth):
         expected_resolutions[i, :-1] = 2**i
 
-    test_image = create_test_fused_image(image_mosaic, test_constants)
-
     with h5py.File(output_file, "r") as f:
         assert len(f["t00000"].keys()) == image_mosaic.num_channels
         # Extra group accounts for the t00000 group
@@ -312,6 +328,6 @@ def test_fuse_to_bdv_h5(image_mosaic, test_constants):
                 f[f"{tile_name}/subdivisions"] == expected_subdivisions
             )
             assert len(f[f"t00000/{tile_name}"].keys()) == pyramid_depth
-            assert np.all(
-                f[f"t00000/{tile_name}/0/cells"] == test_image[idx, :, :, :]
+            assert np.array_equal(
+                f[f"t00000/{tile_name}/0/cells"], fused_image[idx, :, :, :]
             )
