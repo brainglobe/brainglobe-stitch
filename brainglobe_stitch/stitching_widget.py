@@ -30,7 +30,6 @@ from brainglobe_stitch.file_utils import (
     create_pyramid_bdv_h5,
 )
 from brainglobe_stitch.image_mosaic import ImageMosaic
-from brainglobe_stitch.utils import calculate_thresholds
 
 
 def add_tiles_from_mosaic(
@@ -46,9 +45,7 @@ def add_tiles_from_mosaic(
     image_mosaic : ImageMosaic
         The ImageMosaic object containing the data for the tiles.
     """
-    final_thresholds: Dict[str, float] = calculate_thresholds(
-        image_mosaic.tiles
-    )
+    final_thresholds: Dict[str, float] = image_mosaic.calculate_contrast_max()
 
     for data, tile_name, tile in zip(
         napari_data, image_mosaic.tile_names, image_mosaic.tiles

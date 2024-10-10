@@ -24,7 +24,6 @@ from brainglobe_stitch.file_utils import (
     safe_find,
 )
 from brainglobe_stitch.tile import Tile
-from brainglobe_stitch.utils import calculate_thresholds
 
 
 class ImageMosaic:
@@ -507,7 +506,7 @@ class ImageMosaic:
             axes=axes_metadata,
         )
 
-        channel_thresholds = calculate_thresholds(self.tiles)
+        channel_thresholds = self.calculate_contrast_max()
         # Create the channels attribute
         channels = []
         for i, name in enumerate(self.channel_names):
@@ -810,6 +809,47 @@ class ImageMosaic:
         # Add a two space indentation to the file
         ET.indent(tree, space="  ")
         tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
+
+    def calculate_contrast_max(
+        self, pyramid_level: int = 3
+    ) -> Dict[str, float]:
+        """
+        Calculate the appropriate contrast max for each channel.
+
+        The 99th percentile of the middle slice of each tile is calculated.
+        The maximum of these values is taken as the threshold for each channel.
+
+        Parameters
+        ----------
+        pyramid_level: int
+            The pyramid level at which the contrast max is to be calculated.
+
+        Returns
+        -------
+        Dict[str, float]
+            A dictionary containing the channel names as keys
+            and the contrast maxes as values.
+        """
+        middle_slice_index = (
+            self.tiles[0].data_pyramid[pyramid_level].shape[0] // 2
+        )
+        thresholds: Dict[str, List[float]] = {}
+
+        for tile in self.tiles:
+            tile_data = tile.data_pyramid[pyramid_level]
+            curr_threshold = np.percentile(
+                tile_data[middle_slice_index].ravel(), 99
+            ).compute()[0]
+            threshold_list = thresholds.get(tile.channel_name, [])
+            threshold_list.append(curr_threshold)
+            thresholds[tile.channel_name] = threshold_list
+
+        final_thresholds: Dict[str, float] = {
+            channel: np.max(thresholds.get(channel))
+            for channel, threshold_value in thresholds.items()
+        }
+
+        return final_thresholds
 
 
 def calculate_downsampled_image_shape(
