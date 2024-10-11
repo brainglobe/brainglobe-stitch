@@ -471,16 +471,13 @@ def test_update_tiles_from_mosaic(
 
 @pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
 def test_on_fuse_button_clicked(
-    make_napari_viewer_proxy, naive_bdv_directory, mocker, file_name
+    stitching_widget_with_mosaic, mocker, file_name
 ):
     mock_display_info = mocker.patch(
         "brainglobe_stitch.stitching_widget.display_info",
         autospec=True,
     )
-    viewer = make_napari_viewer_proxy()
-    stitching_widget = StitchingWidget(viewer)
-
-    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    stitching_widget = stitching_widget_with_mosaic
 
     mock_fuse = mocker.patch(
         "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
@@ -501,12 +498,11 @@ def test_on_fuse_button_clicked(
 
 
 def test_on_fuse_button_clicked_no_file_name(
-    make_napari_viewer_proxy, naive_bdv_directory, mocker
+    stitching_widget_with_mosaic, image_mosaic, mocker
 ):
-    viewer = make_napari_viewer_proxy()
-    stitching_widget = StitchingWidget(viewer)
+    stitching_widget = stitching_widget_with_mosaic
 
-    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
+    stitching_widget.image_mosaic = image_mosaic
     error_message = "Output file name not specified"
 
     mock_show_warning = mocker.patch(
@@ -527,12 +523,10 @@ def test_on_fuse_button_clicked_no_file_name(
 
 
 def test_on_fuse_button_clicked_wrong_suffix(
-    make_napari_viewer_proxy, naive_bdv_directory, mocker
+    stitching_widget_with_mosaic, mocker
 ):
-    viewer = make_napari_viewer_proxy()
-    stitching_widget = StitchingWidget(viewer)
+    stitching_widget = stitching_widget_with_mosaic
 
-    stitching_widget.image_mosaic = ImageMosaic(naive_bdv_directory)
     stitching_widget.output_file_name_field.setText("fused_image.tif")
     error_message = "Output file name should end with .zarr, .h5"
 

@@ -1,9 +1,12 @@
+import os
 import shutil
 from pathlib import Path
 from platform import system
 
 import pooch
 import pytest
+
+from brainglobe_stitch.image_mosaic import ImageMosaic
 
 TEMP_DIR = Path.home() / "temp_test_directory"
 TEST_DATA_URL = "https://gin.g-node.org/IgorTatarnikov/brainglobe-stitch-test/raw/master/brainglobe-stitch/brainglobe-stitch-test-data.zip"
@@ -74,6 +77,30 @@ def naive_bdv_directory():
     yield test_dir
 
     shutil.rmtree(test_dir)
+
+
+@pytest.fixture(scope="module")
+def image_mosaic(naive_bdv_directory):
+    """
+    Fixture for creating an ImageMosaic object for testing. A clean directory
+    is created for this module using the naive_bdv_directory fixture. Tests
+    using this fixture will modify the directory.
+
+    The __del__ method is called at the end of the module to close any open h5
+    files.
+
+    Yields
+    ------
+    ImageMosaic
+        An ImageMosaic object for testing.
+    """
+    os.remove(naive_bdv_directory / "test_data_bdv_tile_config.txt")
+    image_mosaic = ImageMosaic(naive_bdv_directory)
+
+    yield image_mosaic
+
+    # Explicit call to close open h5 files
+    image_mosaic.__del__()
 
 
 @pytest.fixture

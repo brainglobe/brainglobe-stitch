@@ -7,31 +7,6 @@ import pytest
 import zarr
 
 from brainglobe_stitch.file_utils import get_slice_attributes, safe_find
-from brainglobe_stitch.image_mosaic import ImageMosaic
-
-
-@pytest.fixture(scope="module")
-def image_mosaic(naive_bdv_directory):
-    """
-    Fixture for creating an ImageMosaic object for testing. A clean directory
-    is created for this module using the naive_bdv_directory fixture. Tests
-    using this fixture will modify the directory.
-
-    The __del__ method is called at the end of the module to close any open h5
-    files.
-
-    Yields
-    ------
-    ImageMosaic
-        An ImageMosaic object for testing.
-    """
-    os.remove(naive_bdv_directory / "test_data_bdv_tile_config.txt")
-    image_mosaic = ImageMosaic(naive_bdv_directory)
-
-    yield image_mosaic
-
-    # Explicit call to close open h5 files
-    image_mosaic.__del__()
 
 
 @pytest.fixture(scope="module")
