@@ -92,6 +92,30 @@ def test_on_open_file_dialog_clicked(stitching_widget, mocker):
     assert stitching_widget.working_directory == Path(test_dir)
 
 
+def test_on_open_file_dialog_clicked_cancelled(stitching_widget, mocker):
+    """
+    Mocks the QFileDialog.getOpenFileName method to return an empty string to
+    mimic the user cancelling the file dialog. The mesospim_directory_text
+    field should retain its original value and the working_directory attribute
+    of the StitchingWidget should be set to the default directory.
+    """
+    original_value = stitching_widget.mesospim_directory_text_field.text()
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getExistingDirectory",
+        return_value="",
+    )
+
+    stitching_widget._on_open_file_dialog_clicked()
+
+    assert (
+        stitching_widget.mesospim_directory_text_field.text() == original_value
+    )
+    assert (
+        stitching_widget.working_directory
+        == stitching_widget.default_directory
+    )
+
+
 def test_on_mesospim_directory_text_edited(stitching_widget, mocker):
     """
     Test that the on_mesospim_directory_text_edited method correctly sets
@@ -300,6 +324,27 @@ def test_on_open_file_dialog_imagej_clicked(stitching_widget, mocker):
     assert stitching_widget.imagej_path == Path(imagej_dir)
 
 
+def test_on_open_file_dialog_imagej_clicked_cancelled(
+    stitching_widget, mocker
+):
+    """
+    Mocks the QFileDialog.getOpenFileName method to return an empty string to
+    mimic the user cancelling the file dialog. The imageJ path text field
+    should retain its original value and the imageJ path attribute of the
+    StitchingWidget should be set to None.
+    """
+    original_text = stitching_widget.imagej_path_text_field.text()
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getOpenFileName",
+        return_value=("", ""),
+    )
+
+    stitching_widget._on_open_file_dialog_imagej_clicked()
+
+    assert stitching_widget.imagej_path_text_field.text() == original_text
+    assert stitching_widget.imagej_path is None
+
+
 def test_on_imagej_path_text_edited(stitching_widget, mocker):
     """
     Manually sets the imageJ path text field to a mock imageJ directory to
@@ -428,6 +473,10 @@ def test_update_tiles_from_mosaic(
 def test_on_fuse_button_clicked(
     make_napari_viewer_proxy, naive_bdv_directory, mocker, file_name
 ):
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
     viewer = make_napari_viewer_proxy()
     stitching_widget = StitchingWidget(viewer)
 
@@ -443,6 +492,12 @@ def test_on_fuse_button_clicked(
     stitching_widget._on_fuse_button_clicked()
 
     mock_fuse.assert_called_once_with(stitching_widget.image_mosaic, file_name)
+    mock_display_info.assert_called_once_with(
+        stitching_widget,
+        "Info",
+        f"Fused image saved to "
+        f"{stitching_widget.working_directory / file_name}",
+    )
 
 
 def test_on_fuse_button_clicked_no_file_name(

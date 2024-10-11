@@ -203,7 +203,7 @@ def test_constants(imagej_path):
         "DEFAULT_DOWNSAMPLE_FACTORS": (1, 2, 2),
         "DEFAULT_CHUNK_SHAPE": (128, 128, 128),
         "DEFAULT_COMPRESSION_METHOD": "zstd",
-        "DEFAULT_COMPRESSION_LEVEL": 3,
+        "DEFAULT_COMPRESSION_LEVEL": 6,
     }
 
     return constants_dict

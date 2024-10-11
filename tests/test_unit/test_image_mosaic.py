@@ -1,10 +1,12 @@
 import os
+from xml.etree import ElementTree as ET
 
 import h5py
 import numpy as np
 import pytest
 import zarr
 
+from brainglobe_stitch.file_utils import get_slice_attributes, safe_find
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
 
@@ -170,6 +172,11 @@ def test_data_for_napari(image_mosaic, test_constants):
         assert (tile_data[1] == expected_pos).all()
 
 
+def test_fuse_invalid_file_type(image_mosaic):
+    with pytest.raises(ValueError):
+        image_mosaic.fuse("fused.tif")
+
+
 def test_fuse_bdv_h5(image_mosaic, mocker, test_constants):
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
@@ -327,3 +334,35 @@ def test_fuse_to_bdv_h5(image_mosaic, test_constants, fused_image):
             assert np.array_equal(
                 f[f"t00000/{tile_name}/0/cells"], fused_image[idx, :, :, :]
             )
+
+
+def test_write_bdv_xml(image_mosaic, test_constants, tmp_path):
+    output_path = tmp_path / "test_data_bdv.xml"
+    hdf5_file_name = "test_data_bdv.h5"
+    image_mosaic._write_bdv_xml(
+        output_path,
+        tmp_path / hdf5_file_name,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+    )
+    expected_tile_names = [
+        f"s{i:02}" for i in range(image_mosaic.num_channels)
+    ]
+    assert output_path.exists()
+    test_attributes = get_slice_attributes(output_path, expected_tile_names)
+
+    assert len(test_attributes) == test_constants["NUM_CHANNELS"]
+
+    xml_contents = ET.parse(output_path)
+    root = xml_contents.getroot()
+
+    hdf5_path = safe_find(root, ".//hdf5")
+
+    assert hdf5_path is not None
+    assert hdf5_path.text == hdf5_file_name
+
+    view_setups = safe_find(root, ".//ViewSetup")
+    flipped_shape = test_constants["EXPECTED_FUSED_SHAPE"][::-1]
+    assert view_setups is not None
+    assert view_setups[2].text == str(
+        f"{flipped_shape[0]} {flipped_shape[1]} {flipped_shape[2]}"
+    )

@@ -382,7 +382,7 @@ class ImageMosaic:
 
         if output_path.suffix == ".zarr":
             compression_method = "zstd"
-            compression_level = 3
+            compression_level = 6
             self._fuse_to_zarr(
                 output_path,
                 fused_image_shape,
@@ -405,6 +405,8 @@ class ImageMosaic:
                 "Invalid output file type. "
                 "Currently, .zarr and .h5 are supported."
             )
+
+        print(f"Fused image saved to {output_path}")
 
     def _fuse_to_zarr(
         self,
@@ -517,7 +519,7 @@ class ImageMosaic:
                     "label": name,
                     "window": {
                         "start": 0,
-                        "end": channel_thresholds[name],
+                        "end": channel_thresholds[name] * 1.5,
                         "min": 0,
                         "max": 65535,
                     },

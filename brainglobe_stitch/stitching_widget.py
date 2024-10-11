@@ -1,3 +1,4 @@
+import shutil
 from collections.abc import Generator
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -7,7 +8,7 @@ import h5py
 import napari
 import numpy as np
 import numpy.typing as npt
-from brainglobe_utils.qtpy.dialog import display_info
+from brainglobe_utils.qtpy.dialog import display_info, display_warning
 from brainglobe_utils.qtpy.logo import header_widget
 from napari import Viewer
 from napari.qt.threading import create_worker
@@ -56,7 +57,7 @@ def add_tiles_from_mosaic(
             tile_data.compute(),
             name=tile_name,
             blending="translucent",
-            contrast_limits=[0, final_thresholds[channel_name]],
+            contrast_limits=[0, final_thresholds[channel_name] * 1.5],
             multiscale=False,
         )
         tile_layer.translate = tile_position
@@ -227,11 +228,14 @@ class StitchingWidget(QWidget):
         """
         Open a file dialog to select the mesoSPIM directory.
         """
-        self.working_directory = Path(
-            QFileDialog.getExistingDirectory(
-                self, "Select mesoSPIM directory", str(self.default_directory)
-            )
+        working_directory_str = QFileDialog.getExistingDirectory(
+            self, "Select mesoSPIM directory", str(self.default_directory)
         )
+        # A blank string is returned if the user cancels the dialog
+        if not working_directory_str:
+            return
+
+        self.working_directory = Path(working_directory_str)
         # Add the text to the mesospim directory text field
         self.mesospim_directory_text_field.setText(str(self.working_directory))
         self.check_and_load_mesospim_directory()
@@ -332,11 +336,14 @@ class StitchingWidget(QWidget):
         """
         Open a file dialog to select the FIJI path.
         """
-        self.imagej_path = Path(
-            QFileDialog.getOpenFileName(
-                self, "Select FIJI Path", str(self.default_directory)
-            )[0]
-        )
+        imagej_path_str = QFileDialog.getOpenFileName(
+            self, "Select FIJI Path", str(self.default_directory)
+        )[0]
+        # A blank string is returned if the user cancels the dialog
+        if not imagej_path_str:
+            return
+
+        self.imagej_path = Path(imagej_path_str)
         self.imagej_path_text_field.setText(str(self.imagej_path))
         self.check_imagej_path()
 
@@ -391,7 +398,7 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        path = Path(self.output_file_name_field.text())
+        path = self.working_directory / self.output_file_name_field.text()
         valid_extensions = [".zarr", ".h5"]
 
         if path.suffix not in valid_extensions:
@@ -403,9 +410,29 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
+        if path.exists():
+            error_message = (
+                f"Output file {path} already exists. Replace existing file?"
+            )
+            if display_warning(self, "Warning", error_message):
+                (
+                    shutil.rmtree(path)
+                    if path.suffix == ".zarr"
+                    else path.unlink()
+                )
+            else:
+                show_warning(
+                    "Output file already exists. "
+                    "Please choose a different name."
+                )
+                return
+
         self.image_mosaic.fuse(
             self.output_file_name_field.text(),
         )
+
+        show_info("Fusing complete")
+        display_info(self, "Info", f"Fused image saved to {path}")
 
     def check_imagej_path(self) -> None:
         """
