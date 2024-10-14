@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 from platform import system
 
+import numpy as np
 import pooch
 import pytest
 
@@ -234,3 +235,44 @@ def test_constants(imagej_path):
     }
 
     return constants_dict
+
+
+@pytest.fixture(scope="module")
+def fused_image(image_mosaic, test_constants):
+    """
+    Fixture for creating a fused image for testing. The fused image is created
+    by iterating over the tiles in the image mosaic and placing them in
+    reverse order of acquisition. This is used as a ground truth for testing
+    the fusion functions.
+
+
+    Parameters
+    ----------
+    image_mosaic
+        ImageMosaic object loaded with test data.
+    test_constants
+        Dictionary containing constants for testing.
+
+    Returns
+    -------
+    np.ndarray
+        A 4D numpy array representing the fused image.
+    """
+    test_image = np.zeros(
+        (image_mosaic.num_channels, *test_constants["EXPECTED_FUSED_SHAPE"]),
+        dtype=np.int16,
+    )
+    z_size, y_size, x_size = test_constants["TILE_SIZE"]
+    tile_positions = test_constants["EXPECTED_TILE_POSITIONS"]
+
+    for tile, position in zip(
+        image_mosaic.tiles[-1::-1], tile_positions[-1::-1]
+    ):
+        test_image[
+            tile.channel_id,
+            tile.position[0] : position[0] + z_size,
+            tile.position[1] : position[1] + y_size,
+            tile.position[2] : position[2] + x_size,
+        ] = tile.data_pyramid[0].compute()
+
+    return test_image

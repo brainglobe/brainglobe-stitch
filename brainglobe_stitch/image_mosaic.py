@@ -354,6 +354,8 @@ class ImageMosaic:
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
         chunk_shape: Tuple[int, int, int] = (128, 128, 128),
         pyramid_depth: int = 5,
+        compression_method: str = "zstd",
+        compression_level: int = 6,
     ) -> None:
         """
         Fuse the tiles into a single image and save it to the output file.
@@ -369,6 +371,10 @@ class ImageMosaic:
             The shape of the chunks in the zarr file.
         pyramid_depth: int, default: 5
             The depth of the resolution pyramid.
+        compression_method: str, default: "zstd"
+            The compression algorithm to use (only used for zarr).
+        compression_level: int, default: 6
+            The compression level to use (only used for zarr).
         """
         output_path = self.directory / output_file_name
 
@@ -381,8 +387,6 @@ class ImageMosaic:
         )
 
         if output_path.suffix == ".zarr":
-            compression_method = "zstd"
-            compression_level = 6
             self._fuse_to_zarr(
                 output_path,
                 fused_image_shape,

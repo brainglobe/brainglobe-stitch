@@ -9,44 +9,6 @@ import zarr
 from brainglobe_stitch.file_utils import get_slice_attributes, safe_find
 
 
-@pytest.fixture(scope="module")
-def fused_image(image_mosaic, test_constants):
-    """
-    Fixture for creating a fused image for testing. The fused image is created
-    by iterating over the tiles in the image mosaic and placing them in
-    reverse order of acquisition. This is used as a ground truth for testing
-    the fusion functions.
-
-
-    Parameters
-    ----------
-    image_mosaic
-        ImageMosaic object loaded with test data.
-    test_constants
-        Dictionary containing constants for testing.
-
-    Returns
-    -------
-    np.ndarray
-        A 4D numpy array representing the fused image.
-    """
-    test_image = np.zeros(
-        (image_mosaic.num_channels, *test_constants["EXPECTED_FUSED_SHAPE"]),
-        dtype=np.int16,
-    )
-    z_size, y_size, x_size = test_constants["TILE_SIZE"]
-
-    for tile in image_mosaic.tiles[-1::-1]:
-        test_image[
-            tile.channel_id,
-            tile.position[0] : tile.position[0] + z_size,
-            tile.position[1] : tile.position[1] + y_size,
-            tile.position[2] : tile.position[2] + x_size,
-        ] = tile.data_pyramid[0].compute()
-
-    return test_image
-
-
 def test_image_mosaic_init(image_mosaic, naive_bdv_directory, test_constants):
     assert image_mosaic.xml_path == naive_bdv_directory / "test_data_bdv.xml"
     assert (
@@ -149,10 +111,10 @@ def test_data_for_napari(image_mosaic, test_constants):
 
 def test_fuse_invalid_file_type(image_mosaic):
     with pytest.raises(ValueError):
-        image_mosaic.fuse("fused.tif")
+        image_mosaic.fuse("fused.txt")
 
 
-def test_fuse_bdv_h5(image_mosaic, mocker, test_constants):
+def test_fuse_bdv_h5_defaults(image_mosaic, mocker, test_constants):
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
     )
@@ -165,6 +127,33 @@ def test_fuse_bdv_h5(image_mosaic, mocker, test_constants):
         test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
         test_constants["DEFAULT_PYRAMID_DEPTH"],
         test_constants["DEFAULT_CHUNK_SHAPE"],
+    )
+
+
+@pytest.mark.parametrize(
+    "downscale_factors, chunk_shape, pyramid_depth",
+    [((2, 2, 2), (64, 64, 64), 2), ((4, 4, 4), (32, 32, 32), 3)],
+)
+def test_fuse_bdv_h5_custom(
+    image_mosaic,
+    mocker,
+    test_constants,
+    downscale_factors,
+    chunk_shape,
+    pyramid_depth,
+):
+    mock_fuse_function = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
+    )
+    file_name = "fused.h5"
+
+    image_mosaic.fuse(file_name, downscale_factors, chunk_shape, pyramid_depth)
+    mock_fuse_function.assert_called_once_with(
+        image_mosaic.xml_path.parent / file_name,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        downscale_factors,
+        pyramid_depth,
+        chunk_shape,
     )
 
 
@@ -185,6 +174,48 @@ def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
         test_constants["DEFAULT_CHUNK_SHAPE"],
         test_constants["DEFAULT_COMPRESSION_METHOD"],
         test_constants["DEFAULT_COMPRESSION_LEVEL"],
+    )
+
+
+@pytest.mark.parametrize(
+    "downscale_factors, chunk_shape, pyramid_depth, "
+    "compression_method, compression_level",
+    [
+        ((2, 2, 2), (64, 64, 64), 2, "blosclz", 3),
+        ((4, 4, 4), (32, 32, 32), 3, "lz4hc", 9),
+    ],
+)
+def test_fuse_bdv_zarr_custom(
+    image_mosaic,
+    mocker,
+    test_constants,
+    downscale_factors,
+    chunk_shape,
+    pyramid_depth,
+    compression_method,
+    compression_level,
+):
+    mock_fuse_function = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr",
+    )
+    file_name = "fused.zarr"
+
+    image_mosaic.fuse(
+        file_name,
+        downscale_factors,
+        chunk_shape,
+        pyramid_depth,
+        compression_method,
+        compression_level,
+    )
+    mock_fuse_function.assert_called_once_with(
+        image_mosaic.xml_path.parent / file_name,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        downscale_factors,
+        pyramid_depth,
+        chunk_shape,
+        compression_method,
+        compression_level,
     )
 
 
