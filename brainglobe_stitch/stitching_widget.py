@@ -345,6 +345,10 @@ class StitchingWidget(QWidget):
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
 
+        self.adjust_intensity_button.setEnabled(True)
+        self.interpolate_button.setEnabled(True)
+        self.fuse_button.setEnabled(True)
+
     def _set_tile_layers(self, tile_layer: napari.layers.Image) -> None:
         """
         Add the tile layer to the viewer and store it in the tile_layers list.
@@ -435,6 +439,27 @@ class StitchingWidget(QWidget):
         self.update_tiles_from_mosaic(napari_data)
         self.fuse_button.setEnabled(True)
 
+    def _on_adjust_intensity_button_clicked(self):
+        self.image_mosaic.normalise_intensity(
+            resolution_level=self.resolution_to_display,
+            percentile=self.percentile_field.value(),
+        )
+
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
+
+        self.update_tiles_from_mosaic(data_for_napari)
+
+    def _on_interpolation_button_clicked(self):
+        self.image_mosaic.interpolate_overlaps(self.resolution_to_display)
+
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
+
+        self.update_tiles_from_mosaic(data_for_napari)
+
     def _on_fuse_button_clicked(self) -> None:
         if not self.output_file_name_field.text():
             error_message = "Output file name not specified"
@@ -479,6 +504,8 @@ class StitchingWidget(QWidget):
 
         self.image_mosaic.fuse(
             self.output_file_name_field.text(),
+            normalise_intensity=self.normalise_intensity_toggle.isChecked(),
+            interpolate=self.interpolate_toggle.isChecked(),
         )
 
         show_info("Fusing complete")
