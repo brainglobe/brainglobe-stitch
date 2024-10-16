@@ -17,6 +17,7 @@ from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
     get_big_stitcher_transforms,
+    get_illumination_names,
     get_slice_attributes,
     parse_mesospim_metadata,
     write_bdv_xml,
@@ -45,6 +46,8 @@ class ImageMosaic:
         An open h5py file object for the raw data.
     channel_names : List[str]
         The names of the channels in the image as strings.
+    illumination_names : List[str]
+        The names of the illuminations in the image as strings.
     tiles : List[Tile]
         The tiles in the image.
     tile_names : List[str]
@@ -67,6 +70,7 @@ class ImageMosaic:
         self.tile_config_path: Optional[Path] = None
         self.h5_file: Optional[h5py.File] = None
         self.channel_names: List[str] = []
+        self.illumination_names: Dict[int, str] = {}
         self.tiles: List[Tile] = []
         self.tile_names: List[str] = []
         self.tile_metadata: List[Dict] = []
@@ -77,7 +81,7 @@ class ImageMosaic:
         self.load_mesospim_directory()
 
     def __del__(self):
-        if self.h5_file is not None:
+        if self.h5_file:
             self.h5_file.close()
             self.h5_file = None
 
@@ -174,11 +178,15 @@ class ImageMosaic:
         tile_group = self.h5_file["t00000"]
         self.tile_names = list(tile_group.keys())
         slice_attributes = get_slice_attributes(self.xml_path, self.tile_names)
+        self.illumination_names = get_illumination_names(self.xml_path)
 
         self.tiles = []
         for idx, tile_name in enumerate(self.tile_names):
             tile = Tile(tile_name, idx, slice_attributes[tile_name])
             tile.channel_name = self.channel_names[tile.channel_id]
+            tile.illumination_name = self.illumination_names[
+                tile.illumination_id
+            ]
             self.tiles.append(tile)
             tile_data = []
 

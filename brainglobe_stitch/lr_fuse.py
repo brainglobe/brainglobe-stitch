@@ -1,60 +1,78 @@
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 import dask.array as da
-import napari
 import numpy as np
 import numpy.typing as npt
 import SimpleITK as sitk
+from dask_image.ndinterp import affine_transform as da_affine_transform
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.tile import Tile
 
 
 def register_shutters(
-    fixed_tile: Tile,
-    moving_tile: Tile,
+    image_mosaic: ImageMosaic,
     pyramid_level: int,
     resolution: npt.NDArray,
-) -> sitk.Transform:
-    print("Registering downsampled left and right images")
+) -> Dict[int, Tuple[Tile, Tile, sitk.Transform]]:
+    l_r_pairs: Dict[int, List[Tile]] = {}
+    for tile in image_mosaic.tiles:
+        l_r_pair = l_r_pairs.get(tile.channel_id, [])
+        l_r_pair.append(tile)
+        l_r_pairs[tile.channel_id] = l_r_pair
 
-    fixed = sitk.GetImageFromArray(
-        fixed_tile.data_pyramid[pyramid_level].compute().astype(np.float32)
-    )
-    moving = sitk.GetImageFromArray(
-        moving_tile.data_pyramid[pyramid_level].compute().astype(np.float32)
-    )
+    out_dict: Dict[int, Tuple[Tile, Tile, sitk.Transform]] = {}
+    for channel_id in l_r_pairs.keys():
+        channel_name = image_mosaic.channel_names[channel_id]
+        curr_tiles = l_r_pairs[channel_id]
+        print(
+            f"Registering downsampled left and right images "
+            f"for channel {channel_name}"
+        )
+        right_tile_ind = 0 if curr_tiles[0].illumination_name == "Right" else 1
+        left_tile_ind = 1 - right_tile_ind
 
-    fixed.SetSpacing(tuple(resolution[::-1]))
-    moving.SetSpacing(tuple(resolution[::-1]))
+        right_tile = curr_tiles[right_tile_ind]
+        left_tile = curr_tiles[left_tile_ind]
 
-    registration_method = sitk.ImageRegistrationMethod()
-    registration_method.SetMetricAsMattesMutualInformation(
-        numberOfHistogramBins=24
-    )
-    # registration_method.SetMetricSamplingPercentage(0.25, sitk.sitkWallClock)
-    # registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
-    registration_method.SetOptimizerAsRegularStepGradientDescent(
-        1.0, 0.001, 200
-    )
-    registration_method.SetInitialTransform(
-        sitk.TranslationTransform(fixed.GetDimension())
-    )
-    registration_method.SetInterpolator(sitk.sitkLinear)
+        fixed = sitk.GetImageFromArray(
+            right_tile.data_pyramid[pyramid_level].compute().astype(np.float32)
+        )
+        moving = sitk.GetImageFromArray(
+            left_tile.data_pyramid[pyramid_level].compute().astype(np.float32)
+        )
 
-    out_transform = registration_method.Execute(fixed, moving)
+        fixed.SetSpacing(tuple(resolution[::-1]))
+        moving.SetSpacing(tuple(resolution[::-1]))
 
-    print("-------")
-    print(out_transform)
-    print(
-        f"Optimizer stop condition: "
-        f"{registration_method.GetOptimizerStopConditionDescription()}"
-    )
-    print(f" Iteration: {registration_method.GetOptimizerIteration()}")
-    print(f" Metric value: {registration_method.GetMetricValue()}")
-    print("-------")
+        registration_method = sitk.ImageRegistrationMethod()
+        registration_method.SetMetricAsMattesMutualInformation(
+            numberOfHistogramBins=24
+        )
+        registration_method.SetOptimizerAsRegularStepGradientDescent(
+            1.0, 0.001, 200
+        )
+        registration_method.SetInitialTransform(
+            sitk.TranslationTransform(fixed.GetDimension())
+        )
+        registration_method.SetInterpolator(sitk.sitkLinear)
 
-    return out_transform
+        out_transform = registration_method.Execute(fixed, moving)
+
+        print("-------")
+        print(out_transform)
+        print(
+            f"Optimizer stop condition: "
+            f"{registration_method.GetOptimizerStopConditionDescription()}"
+        )
+        print(f" Iteration: {registration_method.GetOptimizerIteration()}")
+        print(f" Metric value: {registration_method.GetMetricValue()}")
+        print("-------")
+
+        out_dict[channel_id] = (left_tile, right_tile, out_transform)
+
+    return out_dict
 
 
 def blend_along_axis(
@@ -65,7 +83,7 @@ def blend_along_axis(
     pixel_width=None,
     weight_at_pixel_width=0.95,
     weight_threshold=1e-3,
-):
+) -> da.Array:
     """Sigmoidal blending of two arrays of equal shape along an axis
 
     Parameters
@@ -91,7 +109,7 @@ def blend_along_axis(
 
     Returns
     -------
-    blended_array : ndarray
+    blended_array : da.Array
         blended result of same shape as input arrays
 
     Notes
@@ -161,8 +179,8 @@ def blend_along_axis(
 
 
 def l_r_fuse(
-    image_mosaic: ImageMosaic, pyramid_level: int = 2
-) -> sitk.Transform:
+    image_mosaic: ImageMosaic, pyramid_level: int = 2, order=1
+) -> ImageMosaic:
     resolution = (
         np.array(
             [
@@ -171,51 +189,40 @@ def l_r_fuse(
                 image_mosaic.x_y_resolution,
             ]
         )
-        * image_mosaic.tiles[3].resolution_pyramid[pyramid_level]
+        * image_mosaic.tiles[0].resolution_pyramid[pyramid_level]
     )
 
-    transform = register_shutters(
-        image_mosaic.tiles[1], image_mosaic.tiles[3], pyramid_level, resolution
-    )
+    transforms = register_shutters(image_mosaic, pyramid_level, resolution)
 
-    return transform
+    for channel_id, (left_tile, right_tile, transform) in transforms.items():
+        print(
+            f"Applying transform for channel "
+            f"{image_mosaic.channel_names[channel_id]}"
+        )
+        # SimpleITK returns the transform as x, y, z. in physical space
+        # Transform back to z, y, x and scale to pixel coordinates
+        descaled_offset = transform.GetParameters()[::-1] / resolution
+
+        transform_matrix = np.eye(4)
+        transform_matrix[:3, 3] = descaled_offset
+        left_tile.data_pyramid[0] = da_affine_transform(
+            left_tile.data_pyramid[0], transform_matrix, order
+        )
+
+        left_tile.data_pyramid[0] = blend_along_axis(
+            right_tile.data_pyramid[0], left_tile.data_pyramid[0], axis=2
+        )
+
+        image_mosaic.tiles.remove(right_tile)
+        image_mosaic.tile_names.remove(right_tile.name)
+
+    image_mosaic.fuse("test.zarr")
+
+    return image_mosaic
 
 
 if __name__ == "__main__":
     working_dir = Path("/mnt/Data/Phillip/")
     image_mosaic_in = ImageMosaic(working_dir)
 
-    transform_out = l_r_fuse(image_mosaic_in)
-
-    preview_level = 0
-    blended = blend_along_axis(
-        image_mosaic_in.tiles[1].data_pyramid[preview_level],
-        image_mosaic_in.tiles[3].data_pyramid[preview_level],
-        axis=2,
-        weight_threshold=1e-4,
-    )
-
-    viewer = napari.Viewer()
-    scale = (
-        np.array(
-            [
-                image_mosaic_in.z_resolution,
-                image_mosaic_in.x_y_resolution,
-                image_mosaic_in.x_y_resolution,
-            ]
-        )
-        * image_mosaic_in.tiles[3].resolution_pyramid[preview_level]
-    )
-
-    viewer.add_image(
-        image_mosaic_in.tiles[3].data_pyramid[preview_level],
-        contrast_limits=[0, 3000],
-        scale=scale,
-    )
-    viewer.add_image(
-        image_mosaic_in.tiles[1].data_pyramid[preview_level],
-        contrast_limits=[0, 3000],
-        scale=scale,
-    )
-    viewer.add_image(blended, contrast_limits=[0, 3000], scale=scale)
-    viewer.show(block=True)
+    l_r_fuse(image_mosaic_in, order=0)
