@@ -277,32 +277,47 @@ class ImageMosaic:
         fiji_path: Path,
         resolution_level: int,
         selected_channel: str,
+        min_r: float = 0.7,
+        max_r: float = 1.0,
+        max_shift_x: float = 100.0,
+        max_shift_y: float = 100.0,
+        max_shift_z: float = 100.0,
+        relative: float = 2.5,
+        absolute: float = 3.5,
     ) -> None:
         """
         Stitch the tiles in the image using BigStitcher.
 
         Parameters
         ----------
-        fiji_path : Path
+        fiji_path: Path
             The path to the Fiji application.
-        resolution_level : int
+        resolution_level: int
             The resolution level to stitch the tiles at.
-        selected_channel : str
+        selected_channel: str
             The name of the channel to stitch.
+        min_r: float
+            The minimum correlation coefficient for a link to be accepted.
+            Default is 0.7.
+        max_r: float
+            The maximum Pearson coefficient for a link to be accepted.
+            Default is 1.0.
+        max_shift_x: float
+            The maximum shift in the x-dimension for a link to be accepted.
+            Default is 100.0.
+        max_shift_y: float
+            The maximum shift in the y-dimension for a link to be accepted.
+            Default is 100.0.
+        max_shift_z: float
+            The maximum shift in the z-dimension for a link to be accepted.
+            Default is 100.0.
+        relative: float
+            The relative threshold for a link to be accepted.
+            Default is 2.5.
+        absolute: float
+            The absolute threshold for a link to be accepted.
+            Default is 3.5.
         """
-
-        # If selected_channel is an empty string then stitch based on
-        # all channels
-        all_channels = len(selected_channel) == 0
-        channel_int = -1
-
-        # Extract the wavelength from the channel name
-        if not all_channels:
-            try:
-                channel_int = int(selected_channel.split()[0])
-            except ValueError:
-                raise ValueError("Invalid channel name.")
-
         # Extract the downsample factors for the selected resolution level
         downsample_z, downsample_y, downsample_x = self.tiles[
             0
@@ -311,25 +326,29 @@ class ImageMosaic:
         assert self.xml_path is not None
         assert self.tile_config_path is not None
 
-        result = run_big_stitcher(
+        big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
+
+        # Refresh the log file
+        if big_stitcher_output_path.exists():
+            big_stitcher_output_path.unlink()
+
+        run_big_stitcher(
             fiji_path,
             self.xml_path,
             self.tile_config_path,
-            all_channels,
-            channel_int,
+            big_stitcher_log=big_stitcher_output_path,
+            selected_channel=selected_channel,
             downsample_x=downsample_x,
             downsample_y=downsample_y,
             downsample_z=downsample_z,
+            min_r=min_r,
+            max_r=max_r,
+            max_shift_x=max_shift_x,
+            max_shift_y=max_shift_y,
+            max_shift_z=max_shift_z,
+            relative=relative,
+            absolute=absolute,
         )
-
-        big_stitcher_output_path = self.directory / "big_stitcher_output.txt"
-
-        with open(big_stitcher_output_path, "w") as f:
-            f.write(result.stdout)
-            f.write(result.stderr)
-
-        # Print the output of BigStitcher to the command line
-        print(result.stdout)
 
         # Wait for the BigStitcher to write XML file
         # Need to find a better way to do this
