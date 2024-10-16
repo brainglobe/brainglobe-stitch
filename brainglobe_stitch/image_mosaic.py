@@ -19,11 +19,13 @@ from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
     create_pyramid_bdv_h5,
     get_big_stitcher_transforms,
+    get_channel_names,
+    get_resolution,
     get_slice_attributes,
     parse_mesospim_metadata,
     safe_find,
 )
-from brainglobe_stitch.tile import Tile
+from brainglobe_stitch.tile import Overlap, Tile
 
 
 class ImageMosaic:
@@ -50,6 +52,8 @@ class ImageMosaic:
         The tiles in the image.
     tile_names : List[str]
         The names of the image tiles from BigDataViewer.
+    overlaps : Dict[Tuple[int, int], Overlap]
+        A dictionary of tile pairs and their overlaps.
     x_y_resolution : float
         The resolution of the image in the x and y dimensions
         in micrometers per pixel.
@@ -58,6 +62,14 @@ class ImageMosaic:
         in micrometers per pixel.
     num_channels : int
         The number of channels in the image.
+    scale_factors : Optional[npt.NDArray]
+        The scale factors for normalising the intensity of the image.
+    intensity_adjusted : List[bool]
+        A list of booleans indicating whether the intensity has been adjusted
+        at each resolution level.
+    overlaps_interpolated : List[bool]
+        A list of booleans indicating whether the overlaps have been
+        interpolated at each resolution level.
     """
 
     def __init__(self, directory: Path):
@@ -71,14 +83,23 @@ class ImageMosaic:
         self.tiles: List[Tile] = []
         self.tile_names: List[str] = []
         self.tile_metadata: List[Dict] = []
+        self.overlaps: Dict[Tuple[int, int], Overlap] = {}
         self.x_y_resolution: float = 4.0  # um per pixel
         self.z_resolution: float = 5.0  # um per pixel
         self.num_channels: int = 1
 
         self.load_mesospim_directory()
 
+        self.scale_factors: Optional[npt.NDArray] = None
+        self.intensity_adjusted: List[bool] = [False] * len(
+            self.tiles[0].resolution_pyramid
+        )
+        self.overlaps_interpolated: List[bool] = [False] * len(
+            self.tiles[0].resolution_pyramid
+        )
+
     def __del__(self):
-        if self.h5_file is not None:
+        if not self.h5_file:
             self.h5_file.close()
             self.h5_file = None
 
@@ -124,7 +145,6 @@ class ImageMosaic:
             print("Invalid mesoSPIM directory")
 
         assert self.xml_path is not None
-        assert self.meta_path is not None
         assert self.h5_path is not None
 
         self.h5_file = h5py.File(self.h5_path, "r")
@@ -155,16 +175,11 @@ class ImageMosaic:
             str(self.xml_path)[:-4] + "_tile_config.txt"
         )
 
-        self.tile_metadata = parse_mesospim_metadata(self.meta_path)
+        self.channel_names = get_channel_names(self.xml_path)
 
-        self.channel_names = []
-        idx = 0
-        while self.tile_metadata[idx]["Laser"] not in self.channel_names:
-            self.channel_names.append(self.tile_metadata[idx]["Laser"])
-            idx += 1
-
-        self.x_y_resolution = self.tile_metadata[0]["Pixelsize in um"]
-        self.z_resolution = self.tile_metadata[0]["z_stepsize"]
+        resolutions_from_metadata = get_resolution(self.xml_path)
+        self.x_y_resolution = resolutions_from_metadata[0]
+        self.z_resolution = resolutions_from_metadata[-1]
         self.num_channels = len(self.channel_names)
 
         # Each tile is a group under "t00000"
@@ -172,6 +187,7 @@ class ImageMosaic:
         # Names aren't always contiguous, e.g. s00, s01, s04, s05 is valid
         tile_group = self.h5_file["t00000"]
         self.tile_names = list(tile_group.keys())
+        self.tile_names = sorted(self.tile_names, key=lambda x: int(x[1:]))
         slice_attributes = get_slice_attributes(self.xml_path, self.tile_names)
 
         self.tiles = []
@@ -200,28 +216,39 @@ class ImageMosaic:
             for i, resolution in enumerate(resolutions):
                 tile.resolution_pyramid[i] = resolution[-1::-1]
 
-        # Don't rewrite the tile config file if it already exists
-        # These will be used as the initial tile positions
-        # This file will be passed to BigStitcher
-        if not self.tile_config_path.exists():
-            print("Tile positions not found. Writing tile config file.")
-            self.write_big_stitcher_tile_config(self.meta_path)
+        if self.meta_path:
+            print("Using mesoSPIM meta.txt.")
+            self.tile_metadata = parse_mesospim_metadata(self.meta_path)
 
-        # Read the tile config file to get the initial tile positions
-        with open(self.tile_config_path, "r") as f:
-            # Skip header
-            f.readline()
+            # Don't rewrite the tile config if it already exists
+            # Need to read in stage coordinates if not writing the tile config
+            # These will be used as the initial tile positions
+            if not self.tile_config_path.exists():
+                self.write_big_stitcher_tile_config(self.meta_path)
+            else:
+                with open(self.tile_config_path, "r") as f:
+                    # Skip header
+                    f.readline()
 
-            for line, tile in zip(f.readlines(), self.tiles):
-                split_line = line.split(";")[-1].strip("()\n").split(",")
-                # BigStitcher uses x,y,z order
-                # Switch to z,y,x order
-                translation = [
-                    int(split_line[2]),
-                    int(split_line[1]),
-                    int(split_line[0]),
-                ]
-                tile.position = translation
+                    for line, tile in zip(f.readlines(), self.tiles):
+                        split_line = (
+                            line.split(";")[-1].strip("()\n").split(",")
+                        )
+                        # BigStitcher uses x,y,z order
+                        # Switch to z,y,x order
+                        translation = [
+                            int(split_line[2]),
+                            int(split_line[1]),
+                            int(split_line[0]),
+                        ]
+                        tile.position = translation
+        else:
+            try:
+                self.read_big_stitcher_transforms()
+            except (IndexError, AssertionError, ValueError):
+                print("Error reading transforms from big_stitcher")
+
+        self.calculate_overlaps()
 
     def write_big_stitcher_tile_config(self, meta_file_name: Path) -> None:
         """
@@ -234,6 +261,7 @@ class ImageMosaic:
             The path to the mesoSPIM metadata file.
         """
         # Remove .h5_meta.txt from the file name
+        print("Tile positions not found. Writing tile config file.")
         output_file = str(meta_file_name)[:-12] + "_tile_config.txt"
 
         tile_xy_locations = []
@@ -269,6 +297,13 @@ class ImageMosaic:
                     f"({relative_locations[tile.tile_id][0]},"
                     f"{relative_locations[tile.tile_id][1]},0)\n"
                 )
+                # Save the relative locations for each tile
+                # BigStitcher uses x,y,z order, switch to z,y,x order
+                tile.position = [
+                    0,
+                    relative_locations[tile.tile_id][1],
+                    relative_locations[tile.tile_id][0],
+                ]
 
         return
 
@@ -356,6 +391,8 @@ class ImageMosaic:
 
         self.read_big_stitcher_transforms()
 
+        self.calculate_overlaps()
+
     def read_big_stitcher_transforms(self) -> None:
         """
         Read the BigStitcher transforms from the XML file and update the tile
@@ -367,9 +404,191 @@ class ImageMosaic:
             stitched_position = stitched_translations[tile.id]
             tile.position = stitched_position
 
+    def reload_resolution_pyramid_level(self, resolution_level: int) -> None:
+        """
+        Reload the data for a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to reload the data for.
+        """
+        if self.h5_file:
+            for tile in self.tiles:
+                tile.data_pyramid[resolution_level] = da.from_array(
+                    self.h5_file[
+                        f"t00000/{tile.name}/{resolution_level}/cells"
+                    ]
+                )
+
+            self.intensity_adjusted[resolution_level] = False
+            self.overlaps_interpolated[resolution_level] = False
+
+    def calculate_overlaps(self) -> None:
+        """
+        Calculate the overlaps between the tiles in the ImageMosaic.
+        """
+        self.overlaps = {}
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        for tile_i in self.tiles[:-1]:
+            position_i = tile_i.position
+            tile_i.neighbours = []
+            for tile_j in self.tiles[tile_i.id + 1 :]:
+                position_j = tile_j.position
+
+                # Check for overlap in the x and y dimensions
+                # and that the tiles do not have the same tile_id
+                # and that the tiles are from the same channel
+                if (
+                    (
+                        position_i[1] + y_size > position_j[1]
+                        and position_i[1] < position_j[1] + y_size
+                    )
+                    and (
+                        position_i[2] + x_size > position_j[2]
+                        and position_i[2] < position_j[2] + x_size
+                    )
+                    and (tile_i.tile_id != tile_j.tile_id)
+                    and (tile_i.channel_id == tile_j.channel_id)
+                ):
+                    starts = np.array(
+                        [max(position_i[i], position_j[i]) for i in range(3)]
+                    )
+                    ends = np.add(
+                        [min(position_i[i], position_j[i]) for i in range(3)],
+                        [z_size, y_size, x_size],
+                    )
+                    size = np.subtract(ends, starts)
+
+                    self.overlaps[(tile_i.id, tile_j.id)] = Overlap(
+                        starts, size, tile_i, tile_j
+                    )
+                    tile_i.neighbours.append(tile_j.id)
+
+    def normalise_intensity(
+        self, resolution_level: int = 0, percentile: int = 80
+    ) -> None:
+        """
+        Normalise the intensity of the image at a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to normalise the intensity at.
+        percentile: int
+            The percentile based on which the normalisation is done.
+        """
+        if self.intensity_adjusted[resolution_level]:
+            print("Intensity already adjusted at this resolution scale.")
+            return
+
+        if self.scale_factors is None:
+            # Calculate scale factors on at least resolution level 2
+            # The tiles are adjusted as the scale factors are calculated
+            self.calculate_intensity_scale_factors(
+                max(resolution_level, 2), percentile
+            )
+
+            if self.intensity_adjusted[resolution_level]:
+                return
+
+        assert self.scale_factors is not None
+
+        # Adjust the intensity of each tile based on the scale factors
+        for tile in self.tiles:
+            if self.scale_factors[tile.id] != 1.0:
+                tile.data_pyramid[resolution_level] = da.multiply(
+                    tile.data_pyramid[resolution_level],
+                    self.scale_factors[tile.id],
+                    dtype=np.float16,
+                ).astype(tile.data_pyramid[resolution_level].dtype)
+
+        self.intensity_adjusted[resolution_level] = True
+
+    def calculate_intensity_scale_factors(
+        self, resolution_level: int, percentile: int
+    ):
+        """
+        Calculate the scale factors for normalising the intensity of the image.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to calculate the scale factors at.
+        percentile: int
+            The percentile based on which the normalisation is done.
+        """
+        num_tiles = len(self.tiles)
+        scale_factors = np.ones((num_tiles, num_tiles))
+
+        for tile_i in self.tiles:
+            # Iterate through the neighbours of each tile
+            print(f"Calculating scale factors for tile {tile_i.id}")
+            for neighbour_id in tile_i.neighbours:
+                tile_j = self.tiles[neighbour_id]
+                overlap = self.overlaps[(tile_i.id, tile_j.id)]
+
+                # Extract the overlapping data from both tiles
+                i_overlap, j_overlap = overlap.extract_tile_overlaps(
+                    resolution_level
+                )
+
+                # Calculate the percentile intensity of the overlapping data
+                median_i = da.percentile(i_overlap.ravel(), percentile)
+                median_j = da.percentile(j_overlap.ravel(), percentile)
+
+                curr_scale_factor = (median_i / median_j).compute()
+                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor[0]
+
+                # Adjust the tile intensity based on the scale factor
+                tile_j.data_pyramid[resolution_level] = da.multiply(
+                    tile_j.data_pyramid[resolution_level],
+                    curr_scale_factor,
+                    dtype=np.float16,
+                ).astype(tile_j.data_pyramid[resolution_level].dtype)
+
+        self.intensity_adjusted[resolution_level] = True
+        # Calculate the product of the scale factors for each tile's neighbours
+        # The product is the final scale factor for that tile
+        self.scale_factors = np.prod(scale_factors, axis=0)
+
+        return
+
+    def interpolate_overlaps(self, resolution_level: int) -> None:
+        """
+        Interpolate the overlaps between the tiles at a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to interpolate the overlaps at.
+        """
+        tile_shape = self.tiles[0].data_pyramid[resolution_level].shape
+
+        if self.overlaps_interpolated[resolution_level]:
+            print("Overlaps already interpolated at this resolution scale.")
+            return
+
+        for tile_i in self.tiles[:-1]:
+            # Iterate through each neighbour
+            for neighbour_id in tile_i.neighbours:
+                tile_j = self.tiles[neighbour_id]
+                overlap = self.overlaps[(tile_i.id, tile_j.id)]
+
+                overlap.linear_interpolation(resolution_level, tile_shape)
+
+                print(
+                    f"Done interpolating tile {tile_i.id}" f" and {tile_j.id}"
+                )
+
+        self.overlaps_interpolated[resolution_level] = True
+
     def fuse(
         self,
         output_file_name: str,
+        normalise_intensity: bool = False,
+        interpolate: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
         chunk_shape: Tuple[int, int, int] = (128, 128, 128),
         pyramid_depth: int = 5,
@@ -384,6 +603,10 @@ class ImageMosaic:
         output_file_name: str
             The name of the output file, suffix dictates the output file type.
             Accepts .zarr and .h5 extensions.
+        normalise_intensity: bool, default: False
+            Whether to normalise the intensity of the image.
+        interpolate: bool, default: False
+            Whether to interpolate the overlaps between the tiles.
         downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
             The factors to downscale the image by in the z, y, x dimensions.
         chunk_shape: Tuple[int, ...], default: (128, 128, 128)
@@ -404,6 +627,12 @@ class ImageMosaic:
             max([tile.position[1] for tile in self.tiles]) + y_size,
             max([tile.position[2] for tile in self.tiles]) + x_size,
         )
+
+        if normalise_intensity:
+            self.normalise_intensity(0, 80)
+
+        if interpolate:
+            self.interpolate_overlaps(0)
 
         if output_path.suffix == ".zarr":
             self._fuse_to_zarr(
@@ -865,6 +1094,7 @@ class ImageMosaic:
             curr_threshold = np.percentile(
                 tile_data[middle_slice_index].ravel(), 99
             ).compute()[0]
+            assert tile.channel_name
             threshold_list = thresholds.get(tile.channel_name, [])
             threshold_list.append(curr_threshold)
             thresholds[tile.channel_name] = threshold_list

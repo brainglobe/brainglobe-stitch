@@ -5,15 +5,16 @@ from typing import Dict, List, Optional, Tuple
 
 import dask.array as da
 import h5py
-import napari
+import napari.layers
 import numpy as np
 import numpy.typing as npt
 from brainglobe_utils.qtpy.dialog import display_info, display_warning
 from brainglobe_utils.qtpy.logo import header_widget
-from napari import Viewer
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_info, show_warning
+from napari.viewer import Viewer
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -22,9 +23,11 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
+from superqt import QCollapsible
 
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
@@ -52,12 +55,14 @@ def add_tiles_from_mosaic(
         napari_data, image_mosaic.tile_names, image_mosaic.tiles
     ):
         channel_name = tile.channel_name
+        assert channel_name
         tile_data, tile_position = data
+        max_threshold = final_thresholds.get(channel_name, 5000)
         tile_layer = napari.layers.Image(
             tile_data.compute(),
             name=tile_name,
             blending="translucent",
-            contrast_limits=[0, final_thresholds[channel_name] * 1.5],
+            contrast_limits=[0, max_threshold * 1.5],
             multiscale=False,
         )
         tile_layer.translate = tile_position
@@ -197,7 +202,7 @@ class StitchingWidget(QWidget):
             self.open_file_dialog_imagej
         )
 
-        self.layout().addWidget(QLabel("Path to ImageJ executable:"))
+        self.layout().addWidget(QLabel("Path to FIJI executable:"))
         self.layout().addWidget(self.select_imagej_path)
 
         self.fuse_channel_dropdown = QComboBox(parent=self)
@@ -208,9 +213,54 @@ class StitchingWidget(QWidget):
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
 
+        self.adjust_intensity_button = QPushButton("Adjust Intensity")
+        self.adjust_intensity_button.clicked.connect(
+            self._on_adjust_intensity_button_clicked
+        )
+        self.adjust_intensity_button.setEnabled(False)
+        self.layout().addWidget(self.adjust_intensity_button)
+
+        self.interpolate_button = QPushButton("Interpolate")
+        self.interpolate_button.clicked.connect(
+            self._on_interpolation_button_clicked
+        )
+        self.interpolate_button.setEnabled(False)
+        self.layout().addWidget(self.interpolate_button)
+
+        self.adjust_intensity_collapsible = QCollapsible(
+            "Intensity Adjustment Options"
+        )
+        self.adjust_intensity_menu = QWidget()
+        self.adjust_intensity_menu.setLayout(
+            QFormLayout(parent=self.adjust_intensity_menu)
+        )
+
+        self.percentile_field = QSpinBox(parent=self.adjust_intensity_menu)
+        self.percentile_field.setRange(0, 100)
+        self.percentile_field.setValue(80)
+        self.adjust_intensity_menu.layout().addRow(
+            "Percentile", self.percentile_field
+        )
+
+        self.adjust_intensity_collapsible.setContent(
+            self.adjust_intensity_menu
+        )
+
+        self.layout().addWidget(self.adjust_intensity_collapsible)
+        self.adjust_intensity_collapsible.collapse(animate=False)
+
         self.fuse_option_widget = QWidget()
         self.fuse_option_widget.setLayout(QFormLayout())
+        self.normalise_intensity_toggle = QCheckBox()
+        self.interpolate_toggle = QCheckBox()
         self.output_file_name_field = QLineEdit()
+
+        self.fuse_option_widget.layout().addRow(
+            "Normalise intensity:", self.normalise_intensity_toggle
+        )
+        self.fuse_option_widget.layout().addRow(
+            "Interpolate overlaps:", self.interpolate_toggle
+        )
         self.fuse_option_widget.layout().addRow(
             "Output file name:", self.output_file_name_field
         )
@@ -218,8 +268,8 @@ class StitchingWidget(QWidget):
         self.layout().addWidget(self.fuse_option_widget)
 
         self.fuse_button = QPushButton("Fuse")
-        self.fuse_button.setEnabled(False)
         self.fuse_button.clicked.connect(self._on_fuse_button_clicked)
+        self.fuse_button.setEnabled(False)
         self.layout().addWidget(self.fuse_button)
 
         self.layout().addWidget(self.progress_bar)
