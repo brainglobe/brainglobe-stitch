@@ -485,22 +485,21 @@ def test_on_fuse_button_clicked(
         "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
         autospec=True,
     )
-
-    stitching_widget.output_file_name_field.setText(file_name)
+    file_path = stitching_widget.working_directory / file_name
+    stitching_widget.select_output_path_text_field.setText(str(file_path))
 
     stitching_widget._on_fuse_button_clicked()
 
     mock_fuse.assert_called_once_with(
         stitching_widget.image_mosaic,
-        file_name,
+        str(file_path),
         normalise_intensity=normalise_intensity,
         interpolate=interpolate,
     )
     mock_display_info.assert_called_once_with(
         stitching_widget,
         "Info",
-        f"Fused image saved to "
-        f"{stitching_widget.working_directory / file_name}",
+        f"Fused image saved to " f"{file_path}",
     )
 
 
@@ -534,7 +533,8 @@ def test_on_fuse_button_clicked_wrong_suffix(
 ):
     stitching_widget = stitching_widget_with_mosaic
 
-    stitching_widget.output_file_name_field.setText("fused_image.tif")
+    output_path = stitching_widget.working_directory / "fused_image.tif"
+    stitching_widget.select_output_path_text_field.setText(str(output_path))
     error_message = "Output file name should end with .zarr, .h5"
 
     mock_show_warning = mocker.patch(

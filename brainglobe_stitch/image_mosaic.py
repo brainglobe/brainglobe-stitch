@@ -618,7 +618,7 @@ class ImageMosaic:
         compression_level: int, default: 6
             The compression level to use (only used for zarr).
         """
-        output_path = self.directory / output_file_name
+        output_path = Path(output_file_name)
 
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         # Calculate the shape of the fused image

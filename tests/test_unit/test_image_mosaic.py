@@ -306,11 +306,11 @@ def test_fuse_bdv_h5_defaults(image_mosaic, mocker, test_constants):
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
     )
-    file_name = "fused.h5"
+    file_path = image_mosaic.xml_path.parent / "fused.h5"
 
-    image_mosaic.fuse(file_name)
+    image_mosaic.fuse(str(file_path))
     mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
         test_constants["DEFAULT_PYRAMID_DEPTH"],
@@ -335,10 +335,10 @@ def test_fuse_bdv_h5_custom(
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
     )
-    file_name = "fused.h5"
+    file_path = image_mosaic.xml_path.parent / "fused.h5"
 
     image_mosaic.fuse(
-        file_name,
+        str(file_path),
         normalise_intensity,
         interpolate,
         downscale_factors,
@@ -346,7 +346,7 @@ def test_fuse_bdv_h5_custom(
         pyramid_depth,
     )
     mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         downscale_factors,
         pyramid_depth,
@@ -355,16 +355,15 @@ def test_fuse_bdv_h5_custom(
 
 
 def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
-    file_name = "fused.zarr"
-
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
     mock_fuse_to_zarr = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
     )
 
-    image_mosaic.fuse(file_name)
+    image_mosaic.fuse(str(file_path))
 
     mock_fuse_to_zarr.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
         test_constants["DEFAULT_PYRAMID_DEPTH"],
@@ -382,7 +381,7 @@ def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
         ((4, 4, 4), (32, 32, 32), 3, "lz4hc", 9),
     ],
 )
-def test_fuse_bdv_zarr_custom(
+def test_fuse_zarr_custom(
     image_mosaic,
     mocker,
     test_constants,
@@ -395,13 +394,13 @@ def test_fuse_bdv_zarr_custom(
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr",
     )
-    file_name = "fused.zarr"
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
 
     normalise_intensity = False
     interpolate = False
 
     image_mosaic.fuse(
-        file_name,
+        str(file_path),
         normalise_intensity,
         interpolate,
         downscale_factors,
@@ -411,7 +410,7 @@ def test_fuse_bdv_zarr_custom(
         compression_level,
     )
     mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         downscale_factors,
         pyramid_depth,

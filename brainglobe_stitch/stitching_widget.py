@@ -119,8 +119,12 @@ class StitchingWidget(QWidget):
         The button for stitching the tiles.
     fuse_option_widget : QWidget
         The widget for the fuse options.
-    output_file_name_field : QLineEdit
-        The text field for the output file name.
+    select_output_path : QWidget
+        The widget for selecting the output path.
+    select_output_path_text_field : QLineEdit
+        The text field for the output path.
+    open_file_dialog_output : QPushButton
+        The button for opening the file dialog for the output path.
     fuse_button : QPushButton
         The button for fusing the stitched tiles.
     """
@@ -253,7 +257,25 @@ class StitchingWidget(QWidget):
         self.fuse_option_widget.setLayout(QFormLayout())
         self.normalise_intensity_toggle = QCheckBox()
         self.interpolate_toggle = QCheckBox()
-        self.output_file_name_field = QLineEdit()
+
+        self.select_output_path = QWidget()
+        self.select_output_path.setLayout(QHBoxLayout())
+
+        self.select_output_path_text_field = QLineEdit()
+        self.select_output_path_text_field.setText(str(self.working_directory))
+        self.select_output_path.layout().addWidget(
+            self.select_output_path_text_field
+        )
+
+        self.open_file_dialog_output = QPushButton("Browse")
+        self.open_file_dialog_output.clicked.connect(
+            self._on_open_file_dialog_output_clicked
+        )
+        self.select_output_path.layout().addWidget(
+            self.open_file_dialog_output
+        )
+
+        self.fuse_option_widget.layout().addWidget(self.select_output_path)
 
         self.fuse_option_widget.layout().addRow(
             "Normalise intensity:", self.normalise_intensity_toggle
@@ -261,9 +283,8 @@ class StitchingWidget(QWidget):
         self.fuse_option_widget.layout().addRow(
             "Interpolate overlaps:", self.interpolate_toggle
         )
-        self.fuse_option_widget.layout().addRow(
-            "Output file name:", self.output_file_name_field
-        )
+        self.fuse_option_widget.layout().addRow(QLabel("Output file name:"))
+        self.fuse_option_widget.layout().addRow(self.select_output_path)
 
         self.layout().addWidget(self.fuse_option_widget)
 
@@ -345,6 +366,7 @@ class StitchingWidget(QWidget):
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
 
+        self.select_output_path_text_field.setText(str(self.working_directory))
         self.adjust_intensity_button.setEnabled(True)
         self.interpolate_button.setEnabled(True)
         self.fuse_button.setEnabled(True)
@@ -460,8 +482,24 @@ class StitchingWidget(QWidget):
 
         self.update_tiles_from_mosaic(data_for_napari)
 
+    def _on_open_file_dialog_output_clicked(self) -> None:
+        """
+        Open a file dialog to select the output file path.
+        """
+        output_file_str = QFileDialog.getSaveFileName(
+            self, "Select output file", str(self.default_directory)
+        )[0]
+        # A blank string is returned if the user cancels the dialog
+        if not output_file_str:
+            return
+
+        self.select_output_path_text_field.setText(output_file_str)
+
     def _on_fuse_button_clicked(self) -> None:
-        if not self.output_file_name_field.text():
+        if (
+            self.select_output_path_text_field.text()
+            == str(self.working_directory)
+        ) or (not self.select_output_path_text_field.text()):
             error_message = "Output file name not specified"
             show_warning(error_message)
             display_info(self, "Warning", error_message)
@@ -473,7 +511,7 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        path = self.working_directory / self.output_file_name_field.text()
+        path = Path(self.select_output_path_text_field.text())
         valid_extensions = [".zarr", ".h5"]
 
         if path.suffix not in valid_extensions:
@@ -503,7 +541,7 @@ class StitchingWidget(QWidget):
                 return
 
         self.image_mosaic.fuse(
-            self.output_file_name_field.text(),
+            self.select_output_path_text_field.text(),
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
             interpolate=self.interpolate_toggle.isChecked(),
         )
