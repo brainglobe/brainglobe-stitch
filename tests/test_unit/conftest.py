@@ -232,6 +232,14 @@ def test_constants(imagej_path):
         "DEFAULT_CHUNK_SHAPE": (128, 128, 128),
         "DEFAULT_COMPRESSION_METHOD": "zstd",
         "DEFAULT_COMPRESSION_LEVEL": 6,
+        "STITCH_RESOLUTION": 2,
+        "DEFAULT_STITCH_MIN_R": 0.7,
+        "DEFAULT_STITCH_MAX_R": 1.0,
+        "DEFAULT_STITCH_MAX_SHIFT_X": 100.0,
+        "DEFAULT_STITCH_MAX_SHIFT_Y": 100.0,
+        "DEFAULT_STITCH_MAX_SHIFT_Z": 100.0,
+        "DEFAULT_STITCH_RELATIVE": 2.5,
+        "DEFAULT_STITCH_ABSOLUTE": 3.5,
     }
 
     return constants_dict

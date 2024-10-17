@@ -71,23 +71,30 @@ def test_stitch(mocker, image_mosaic, naive_bdv_directory, test_constants):
     mock_completed_process.stderr = ""
 
     fiji_path = test_constants["MOCK_IMAGEJ_PATH"]
-    resolution_level = 2
+    resolution_level = test_constants["STITCH_RESOLUTION"]
     selected_channel = test_constants["CHANNELS"][0]
-    selected_channel_int = int(selected_channel.split()[0])
+    image_mosaic.stitch(fiji_path, resolution_level, selected_channel)
+
+    big_stitcher_log = image_mosaic.directory / "big_stitcher_output.txt"
     downsample_z, downsample_y, downsample_x = tuple(
         image_mosaic.tiles[0].resolution_pyramid[resolution_level]
     )
-    image_mosaic.stitch(fiji_path, resolution_level, selected_channel)
-
     mock_run_big_stitcher.assert_called_once_with(
         fiji_path,
         naive_bdv_directory / "test_data_bdv.xml",
         naive_bdv_directory / "test_data_bdv_tile_config.txt",
-        False,
-        selected_channel_int,
+        big_stitcher_log=big_stitcher_log,
+        selected_channel=selected_channel,
         downsample_x=downsample_x,
         downsample_y=downsample_y,
         downsample_z=downsample_z,
+        min_r=test_constants["DEFAULT_STITCH_MIN_R"],
+        max_r=test_constants["DEFAULT_STITCH_MAX_R"],
+        max_shift_x=test_constants["DEFAULT_STITCH_MAX_SHIFT_X"],
+        max_shift_y=test_constants["DEFAULT_STITCH_MAX_SHIFT_Y"],
+        max_shift_z=test_constants["DEFAULT_STITCH_MAX_SHIFT_Z"],
+        relative=test_constants["DEFAULT_STITCH_RELATIVE"],
+        absolute=test_constants["DEFAULT_STITCH_ABSOLUTE"],
     )
 
 
@@ -142,12 +149,21 @@ def test_fuse_bdv_h5_custom(
     chunk_shape,
     pyramid_depth,
 ):
+    normalise_intensity = False
+    interpolate = False
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
     )
     file_name = "fused.h5"
 
-    image_mosaic.fuse(file_name, downscale_factors, chunk_shape, pyramid_depth)
+    image_mosaic.fuse(
+        file_name,
+        normalise_intensity,
+        interpolate,
+        downscale_factors,
+        chunk_shape,
+        pyramid_depth,
+    )
     mock_fuse_function.assert_called_once_with(
         image_mosaic.xml_path.parent / file_name,
         test_constants["EXPECTED_FUSED_SHAPE"],
@@ -200,8 +216,13 @@ def test_fuse_bdv_zarr_custom(
     )
     file_name = "fused.zarr"
 
+    normalise_intensity = False
+    interpolate = False
+
     image_mosaic.fuse(
         file_name,
+        normalise_intensity,
+        interpolate,
         downscale_factors,
         chunk_shape,
         pyramid_depth,
