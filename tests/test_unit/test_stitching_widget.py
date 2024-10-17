@@ -266,7 +266,7 @@ def test_check_and_load_mesospim_directory_no_pyramid(
 
 @pytest.mark.parametrize(
     "file_to_remove",
-    ["test_data_bdv.h5", "test_data_bdv.xml", "test_data_bdv.h5_meta.txt"],
+    ["test_data_bdv.h5", "test_data_bdv.xml"],
 )
 def test_check_and_load_mesospim_directory_missing_files(
     stitching_widget,
@@ -473,6 +473,8 @@ def test_update_tiles_from_mosaic(
 def test_on_fuse_button_clicked(
     stitching_widget_with_mosaic, mocker, file_name
 ):
+    normalise_intensity = False
+    interpolate = False
     mock_display_info = mocker.patch(
         "brainglobe_stitch.stitching_widget.display_info",
         autospec=True,
@@ -488,7 +490,12 @@ def test_on_fuse_button_clicked(
 
     stitching_widget._on_fuse_button_clicked()
 
-    mock_fuse.assert_called_once_with(stitching_widget.image_mosaic, file_name)
+    mock_fuse.assert_called_once_with(
+        stitching_widget.image_mosaic,
+        file_name,
+        normalise_intensity=normalise_intensity,
+        interpolate=interpolate,
+    )
     mock_display_info.assert_called_once_with(
         stitching_widget,
         "Info",

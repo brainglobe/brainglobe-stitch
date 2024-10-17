@@ -97,6 +97,25 @@ def test_stitch(mocker, image_mosaic, naive_bdv_directory, test_constants):
         absolute=test_constants["DEFAULT_STITCH_ABSOLUTE"],
     )
 
+    assert (
+        len(image_mosaic.overlaps) == test_constants["EXPECTED_NUM_OVERLAPS"]
+    )
+
+    expected_overlap_coordinates = test_constants[
+        "EXPECTED_OVERLAP_COORDINATES"
+    ]
+    expected_overlap_size = test_constants["EXPECTED_OVERLAP_SIZE"]
+
+    for idx, overlap in enumerate(image_mosaic.overlaps):
+        assert (
+            image_mosaic.overlaps[overlap].coordinates
+            == expected_overlap_coordinates[idx]
+        ).all()
+        assert (
+            image_mosaic.overlaps[overlap].size[0]
+            == expected_overlap_size[idx]
+        ).all()
+
 
 def test_data_for_napari(image_mosaic, test_constants):
     """
@@ -114,6 +133,168 @@ def test_data_for_napari(image_mosaic, test_constants):
     ):
         assert tile_data[0].shape == test_constants["TILE_SIZE"]
         assert (tile_data[1] == expected_pos).all()
+
+
+@pytest.mark.parametrize(
+    "resolution_level",
+    [0, 1],
+)
+def test_normalise_intensity(
+    mocker, test_constants, image_mosaic, resolution_level
+):
+    def force_set_scale_factors(*args, **kwargs):
+        image_mosaic.scale_factors = test_constants[
+            "EXPECTED_INTENSITY_FACTORS"
+        ]
+        image_mosaic.intensity_adjusted[args[0]] = True
+
+    mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.calculate_intensity_scale_factors",
+        side_effect=force_set_scale_factors,
+    )
+
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    assert not image_mosaic.intensity_adjusted[resolution_level]
+    image_mosaic.scale_factors = None
+
+    image_mosaic.normalise_intensity(resolution_level)
+    assert image_mosaic.intensity_adjusted[resolution_level]
+    assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+
+    for i in range(test_constants["NUM_TILES"]):
+        # Check that there each tile has the correct number of pending tasks
+        # in the dask graph
+        # Expect to have 4: 2 for loading the data, 2 for scaling the data
+        # Since the resolution levels are less than 2, the scaling factors are
+        # calculated on a different resolution level and then applied to the
+        # current resolution level
+        image_mosaic.tiles[i].data_pyramid[resolution_level].dask
+        if test_constants["EXPECTED_INTENSITY_FACTORS"][i] != 1.0:
+            assert (
+                len(
+                    image_mosaic.tiles[i]
+                    .data_pyramid[resolution_level]
+                    .dask.layers
+                )
+                == 4
+            )
+
+
+@pytest.mark.parametrize(
+    "resolution_level",
+    [2, 3, 4],
+)
+def test_normalise_intensity_done_with_factors(
+    mocker, image_mosaic, resolution_level, test_constants
+):
+    def force_set_scale_factors(*args, **kwargs):
+        image_mosaic.scale_factors = test_constants[
+            "EXPECTED_INTENSITY_FACTORS"
+        ]
+        image_mosaic.intensity_adjusted[args[0]] = True
+
+    mock_calc_intensity_factors = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.calculate_intensity_scale_factors",
+        side_effect=force_set_scale_factors,
+    )
+
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    assert not image_mosaic.intensity_adjusted[resolution_level]
+    image_mosaic.scale_factors = None
+
+    image_mosaic.normalise_intensity(resolution_level)
+    assert image_mosaic.intensity_adjusted[resolution_level]
+    assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+
+    mock_calc_intensity_factors.called_once_with(resolution_level, 50)
+
+    # Check that no scale adjustment calculations are queued for the tiles
+    # at the specified resolution level as the correction factors were
+    # calculated based on this resolution level,
+    # therefore no calculations queued.
+    for i in range(test_constants["NUM_TILES"]):
+        assert (
+            len(
+                image_mosaic.tiles[i]
+                .data_pyramid[resolution_level]
+                .dask.layers
+            )
+            == 2
+        )
+
+
+@pytest.mark.parametrize(
+    "resolution_level",
+    [0, 1, 2, 3, 4],
+)
+def test_normalise_intensity_already_adjusted(
+    image_mosaic, resolution_level, test_constants
+):
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.intensity_adjusted[resolution_level] = True
+    image_mosaic.normalise_intensity(resolution_level)
+
+    assert image_mosaic.intensity_adjusted[resolution_level]
+
+    # Check that no scale adjustment calculations are queued for the tiles
+    # at the specified resolution level
+    for i in range(test_constants["NUM_TILES"]):
+        assert (
+            len(
+                image_mosaic.tiles[i]
+                .data_pyramid[resolution_level]
+                .dask.layers
+            )
+            == 2
+        )
+
+
+def test_calculate_intensity_scale_factors(image_mosaic, test_constants):
+    resolution_level = 2
+    percentile = 50
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.scale_factors = None
+
+    image_mosaic.calculate_intensity_scale_factors(
+        resolution_level, percentile
+    )
+
+    assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+    assert np.allclose(
+        image_mosaic.scale_factors,
+        test_constants["EXPECTED_INTENSITY_FACTORS"],
+    )
+
+
+@pytest.mark.parametrize("resolution_level", [0, 1, 2, 3])
+def test_interpolate_overlaps(
+    image_mosaic, resolution_level, mocker, test_constants
+):
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    mock_linear_interpolation = mocker.patch(
+        "brainglobe_stitch.tile.Overlap.linear_interpolation",
+    )
+
+    image_mosaic.interpolate_overlaps(resolution_level)
+
+    assert image_mosaic.overlaps_interpolated[resolution_level]
+    assert (
+        mock_linear_interpolation.call_count
+        == test_constants["EXPECTED_NUM_OVERLAPS"]
+    )
+
+
+def test_interpolate_overlaps_already_done(image_mosaic, mocker):
+    resolution_level = 2
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.overlaps_interpolated[resolution_level] = True
+    mock_linear_interpolation = mocker.patch(
+        "brainglobe_stitch.tile.Overlap.linear_interpolation",
+    )
+    image_mosaic.interpolate_overlaps(resolution_level)
+
+    assert image_mosaic.overlaps_interpolated[resolution_level]
+    mock_linear_interpolation.assert_not_called()
 
 
 def test_fuse_invalid_file_type(image_mosaic):
