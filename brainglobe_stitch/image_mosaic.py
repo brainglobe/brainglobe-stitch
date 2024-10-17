@@ -99,7 +99,7 @@ class ImageMosaic:
         )
 
     def __del__(self):
-        if not self.h5_file:
+        if self.h5_file:
             self.h5_file.close()
             self.h5_file = None
 
