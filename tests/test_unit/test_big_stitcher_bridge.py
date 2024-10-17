@@ -185,8 +185,8 @@ def test_calculate_pairwise_links_single_channel(
     command = (
         f"{expected_imagej_path} --ij2"
         f" --headless -macro {macro_path} "
-        f"{xml_path} {selected_channel} "
-        f"{downsample_x} {downsample_y} {downsample_z}"
+        f'"{xml_path} {selected_channel} '
+        f'{downsample_x} {downsample_y} {downsample_z}"'
     )
 
     mock_subprocess_run.assert_called_with(
@@ -227,8 +227,8 @@ def test_filter_links(
     command = (
         f"{expected_imagej_path} --ij2"
         f" --headless -macro {macro_path} "
-        f"{xml_path} {min_r} {max_r} "
-        f"{max_shift_x} {max_shift_y} {max_shift_z}"
+        f'"{xml_path} {min_r} {max_r} '
+        f'{max_shift_x} {max_shift_y} {max_shift_z}"'
     )
 
     mock_subprocess_run.assert_called_with(

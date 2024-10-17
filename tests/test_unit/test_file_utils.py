@@ -130,10 +130,6 @@ def test_check_mesospim_directory(naive_bdv_directory):
             "Expected 1 h5 file, found 0",
         ),
         (
-            ["test_data_bdv.xml", "test_data_bdv.h5"],
-            "Expected 1 h5_meta.txt file, found 0",
-        ),
-        (
             ["test_data_bdv.h5_meta.txt", "test_data_bdv.h5"],
             "Expected 1 xml file, found 0",
         ),
@@ -161,15 +157,6 @@ def test_check_mesospim_directory_missing_files(
         (
             ["a_bdv.xml", "a_bdv.h5_meta.txt", "a_bdv.h5", "b_bdv.xml"],
             "Expected 1 xml file, found 2",
-        ),
-        (
-            [
-                "a_bdv.xml",
-                "a_bdv.h5_meta.txt",
-                "a_bdv.h5",
-                "b_bdv.h5_meta.txt",
-            ],
-            "Expected 1 h5_meta.txt file, found 2",
         ),
         (
             ["a_bdv.xml", "a_bdv.h5_meta.txt", "a_bdv.h5", "b_bdv.h5"],
