@@ -9,8 +9,10 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 import zarr
+from brainglobe_template_builder.preproc.transform_utils import (
+    downsample_anisotropic_image_stack,
+)
 from numcodecs import Blosc
-from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
 
@@ -733,7 +735,9 @@ class ImageMosaic:
             )
 
             factors = (1, *downscale_factors)
-            downsampled_image = downscale_nearest(prev_resolution, factors)
+            downsampled_image = downsample_anisotropic_image_stack(
+                prev_resolution, factors[1], factors[0]
+            ).compute()
 
             downsampled_shape = downsampled_image.shape
             downsampled_store = root.require_dataset(

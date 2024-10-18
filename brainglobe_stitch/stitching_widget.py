@@ -360,11 +360,16 @@ class StitchingWidget(QWidget):
             self.resolution_to_display
         )
 
-        worker = create_worker(
-            add_tiles_from_mosaic, napari_data, self.image_mosaic
-        )
-        worker.yielded.connect(self._set_tile_layers)
-        worker.start()
+        for napari_layer in add_tiles_from_mosaic(
+            napari_data, self.image_mosaic
+        ):
+            self._set_tile_layers(napari_layer)
+
+        # worker = create_worker(
+        #     add_tiles_from_mosaic, napari_data, self.image_mosaic
+        # )
+        # worker.yielded.connect(self._set_tile_layers)
+        # worker.start()
 
         self.select_output_path_text_field.setText(str(self.working_directory))
         self.adjust_intensity_button.setEnabled(True)
@@ -554,7 +559,7 @@ class StitchingWidget(QWidget):
         Check if the selected ImageJ path is valid. If valid, enable the
         stitch button. Otherwise, show a warning.
         """
-        if self.imagej_path and self.imagej_path.is_file():
+        if self.imagej_path and self.imagej_path.exists():
             self.stitch_button.setEnabled(True)
         else:
             error_message = (
