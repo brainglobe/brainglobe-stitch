@@ -47,7 +47,7 @@ class ImageMosaic:
         The path to the BigStitcher tile configuration file.
     h5_file : Optional[h5py.File]
         An open h5py file object for the raw data.
-    channel_names : List[str]
+    channel_names : Dict[int, str]
         The names of the channels in the image as strings.
     tiles : List[Tile]
         The tiles in the image.
