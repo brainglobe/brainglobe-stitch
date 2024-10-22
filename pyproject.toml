@@ -46,6 +46,7 @@ mesospim-stitcher = "brainglobe_stitch:napari.yaml"
 
 [project.optional-dependencies]
 dev = [
+  "brainglobe-stitch[lr-fuse]",
   "pytest",
   "pytest-cov",
   "pytest-mock",
@@ -59,6 +60,9 @@ dev = [
   "pre-commit",
   "ruff",
   "setuptools_scm",
+]
+lr-fuse = [
+    "SimpleITK",
 ]
 
 [build-system]
