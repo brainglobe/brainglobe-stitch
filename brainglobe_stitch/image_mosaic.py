@@ -20,6 +20,7 @@ from brainglobe_stitch.file_utils import (
     create_pyramid_bdv_h5,
     get_big_stitcher_transforms,
     get_channel_names,
+    get_illumination_names,
     get_resolution,
     get_slice_attributes,
     parse_mesospim_metadata,
@@ -80,6 +81,7 @@ class ImageMosaic:
         self.tile_config_path: Optional[Path] = None
         self.h5_file: Optional[h5py.File] = None
         self.channel_names: List[str] = []
+        self.illumination_names: Dict[int, str] = {}
         self.tiles: List[Tile] = []
         self.tile_names: List[str] = []
         self.tile_metadata: List[Dict] = []
@@ -189,12 +191,16 @@ class ImageMosaic:
         self.tile_names = list(tile_group.keys())
         self.tile_names = sorted(self.tile_names, key=lambda x: int(x[1:]))
         slice_attributes = get_slice_attributes(self.xml_path, self.tile_names)
+        self.illumination_names = get_illumination_names(self.xml_path)
 
         self.tiles = []
         default_chunk_size = (256, 256, 256)
         for idx, tile_name in enumerate(self.tile_names):
             tile = Tile(tile_name, idx, slice_attributes[tile_name])
             tile.channel_name = self.channel_names[tile.channel_id]
+            tile.illumination_name = self.illumination_names[
+                tile.illumination_id
+            ]
             self.tiles.append(tile)
             tile_data = []
 
@@ -586,7 +592,7 @@ class ImageMosaic:
 
     def fuse(
         self,
-        output_file_name: str,
+        output_path: Path,
         normalise_intensity: bool = False,
         interpolate: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
@@ -600,7 +606,7 @@ class ImageMosaic:
 
         Parameters
         ----------
-        output_file_name: str
+        output_path: Path
             The name of the output file, suffix dictates the output file type.
             Accepts .zarr and .h5 extensions.
         normalise_intensity: bool, default: False
@@ -618,8 +624,6 @@ class ImageMosaic:
         compression_level: int, default: 6
             The compression level to use (only used for zarr).
         """
-        output_path = Path(output_file_name)
-
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         # Calculate the shape of the fused image
         fused_image_shape: Tuple[int, int, int] = (

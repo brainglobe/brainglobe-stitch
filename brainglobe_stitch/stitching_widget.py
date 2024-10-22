@@ -513,10 +513,10 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        path = Path(self.select_output_path_text_field.text())
+        output_path = Path(self.select_output_path_text_field.text())
         valid_extensions = [".zarr", ".h5"]
 
-        if path.suffix not in valid_extensions:
+        if output_path.suffix not in valid_extensions:
             error_message = (
                 f"Output file name should end with "
                 f"{', '.join(valid_extensions)}"
@@ -525,15 +525,16 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        if path.exists():
+        if output_path.exists():
             error_message = (
-                f"Output file {path} already exists. Replace existing file?"
+                f"Output file {output_path} already exists. "
+                f"Replace existing file?"
             )
             if display_warning(self, "Warning", error_message):
                 (
-                    shutil.rmtree(path)
-                    if path.suffix == ".zarr"
-                    else path.unlink()
+                    shutil.rmtree(output_path)
+                    if output_path.suffix == ".zarr"
+                    else output_path.unlink()
                 )
             else:
                 show_warning(
@@ -543,13 +544,13 @@ class StitchingWidget(QWidget):
                 return
 
         self.image_mosaic.fuse(
-            self.select_output_path_text_field.text(),
+            output_path,
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
             interpolate=self.interpolate_toggle.isChecked(),
         )
 
         show_info("Fusing complete")
-        display_info(self, "Info", f"Fused image saved to {path}")
+        display_info(self, "Info", f"Fused image saved to {output_path}")
 
     def check_imagej_path(self) -> None:
         """

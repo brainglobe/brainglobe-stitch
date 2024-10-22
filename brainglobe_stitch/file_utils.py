@@ -304,6 +304,39 @@ def get_resolution(xml_path: Path) -> Tuple[float, ...]:
     return tuple(map(float, resolution_text.split()))
 
 
+def get_illumination_names(xml_path: Path) -> Dict[int, str]:
+    """
+    Get the names of the illuminations from a Big Data Viewer XML file.
+
+    Parameters
+    ----------
+    xml_path : Path
+        The path to the XML file.
+
+    Returns
+    -------
+    Dict[int, str]
+        A list of the illumination names.
+    """
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    illuminations = safe_find(root, ".//Attributes[@name='illumination']")
+
+    # Don't assume illuminations are in order
+    illumination_names = {}
+    for illumination in illuminations:
+        illumination_id_text = safe_find(illumination, ".//id").text
+        illumination_name = safe_find(illumination, ".//name").text
+
+        assert illumination_id_text is not None, "No illumination id found"
+        assert illumination_name is not None, "No illumination name found"
+
+        illumination_id = int(illumination_id_text)
+        illumination_names[illumination_id] = illumination_name
+
+    return illumination_names
+
+
 def get_big_stitcher_transforms(xml_path: Path) -> npt.NDArray:
     """
     Get the translations for each tile from a Big Data Viewer XML file.

@@ -33,7 +33,9 @@ class Tile:
         Two tiles with the same tile_id are in the same position in
         different channels.
     illumination_id : int
-        The id of the illumination side.
+        The id of the illumination.
+    illumination_name : str
+        The name of the illumination.
     angle : float
         The angle of sample rotation.
     """
@@ -54,6 +56,7 @@ class Tile:
         self.channel_id: int = int(attributes["channel"])
         self.tile_id: int = int(attributes["tile"])
         self.illumination_id: int = int(attributes["illumination"])
+        self.illumination_name: str = ""
         self.angle: float = float(attributes["angle"])
 
 
