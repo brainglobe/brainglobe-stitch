@@ -9,10 +9,8 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 import zarr
-from brainglobe_template_builder.preproc.transform_utils import (
-    downsample_anisotropic_image_stack,
-)
 from numcodecs import Blosc
+from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
 
@@ -193,6 +191,7 @@ class ImageMosaic:
         slice_attributes = get_slice_attributes(self.xml_path, self.tile_names)
 
         self.tiles = []
+        default_chunk_size = (256, 256, 256)
         for idx, tile_name in enumerate(self.tile_names):
             tile = Tile(tile_name, idx, slice_attributes[tile_name])
             tile.channel_name = self.channel_names[tile.channel_id]
@@ -203,6 +202,7 @@ class ImageMosaic:
                 tile_data.append(
                     da.from_array(
                         tile_group[f"{tile_name}/{pyramid_level}/cells"],
+                        chunks=default_chunk_size,
                     )
                 )
 
@@ -503,7 +503,6 @@ class ImageMosaic:
                 tile.data_pyramid[resolution_level] = da.multiply(
                     tile.data_pyramid[resolution_level],
                     self.scale_factors[tile.id],
-                    dtype=np.float16,
                 ).astype(tile.data_pyramid[resolution_level].dtype)
 
         self.intensity_adjusted[resolution_level] = True
@@ -547,7 +546,6 @@ class ImageMosaic:
                 tile_j.data_pyramid[resolution_level] = da.multiply(
                     tile_j.data_pyramid[resolution_level],
                     curr_scale_factor,
-                    dtype=np.float16,
                 ).astype(tile_j.data_pyramid[resolution_level].dtype)
 
         self.intensity_adjusted[resolution_level] = True
@@ -592,7 +590,7 @@ class ImageMosaic:
         normalise_intensity: bool = False,
         interpolate: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
-        chunk_shape: Tuple[int, int, int] = (128, 128, 128),
+        chunk_shape: Tuple[int, int, int] = (256, 256, 256),
         pyramid_depth: int = 5,
         compression_method: str = "zstd",
         compression_level: int = 6,
@@ -710,22 +708,25 @@ class ImageMosaic:
             shuffle=Blosc.SHUFFLE,
         )
 
-        fused_image_store = root.create(
+        fused_image_store = root.require_dataset(
             "0",
             shape=fused_image_shape,
             chunks=chunk_shape,
-            dtype="i2",
+            dtype=self.tiles[0].data_pyramid[0].dtype,
             compressor=compressor,
         )
 
         # Place the tiles in reverse order of acquisition
         for tile in self.tiles[-1::-1]:
-            fused_image_store[
-                tile.channel_id,
-                tile.position[0] : tile.position[0] + z_size,
-                tile.position[1] : tile.position[1] + y_size,
-                tile.position[2] : tile.position[2] + x_size,
-            ] = tile.data_pyramid[0].compute()
+            position = (
+                slice(tile.channel_id, tile.channel_id + 1),
+                slice(tile.position[0], tile.position[0] + z_size),
+                slice(tile.position[1], tile.position[1] + y_size),
+                slice(tile.position[2], tile.position[2] + x_size),
+            )
+            tile.data_pyramid[0][da.newaxis, :].to_zarr(
+                fused_image_store, region=position
+            )
 
             print(f"Done tile {tile.id}")
 
@@ -735,16 +736,20 @@ class ImageMosaic:
             )
 
             factors = (1, *downscale_factors)
-            downsampled_image = downsample_anisotropic_image_stack(
-                prev_resolution, factors[1], factors[0]
-            ).compute()
-
+            # downsampled_image = da.from_array(
+            #   downsample_anisotropic_image_stack(
+            #     prev_resolution, factors[2], factors[1]
+            # ), chunks=chunk_shape)
+            # downsampled_shape = calculate_downsampled_image_shape(
+            #   prev_resolution.shape, factors
+            # )
+            downsampled_image = downscale_nearest(prev_resolution, factors)
             downsampled_shape = downsampled_image.shape
             downsampled_store = root.require_dataset(
                 f"{i}",
                 shape=downsampled_shape,
                 chunks=chunk_shape,
-                dtype="i2",
+                dtype=prev_resolution.dtype,
                 compressor=compressor,
             )
             downsampled_image.to_zarr(downsampled_store)
@@ -787,10 +792,10 @@ class ImageMosaic:
     def _fuse_to_bdv_h5(
         self,
         output_path: Path,
-        fused_image_shape: Tuple[int, int, int],
+        fused_image_shape: Tuple[int, ...],
         downscale_factors: Tuple[int, int, int],
         pyramid_depth,
-        chunk_shape: Tuple[int, int, int],
+        chunk_shape: Tuple[int, ...],
     ) -> None:
         """
         Fuse the tiles in the ImageMosaic into a single image and save it as a
@@ -1111,13 +1116,21 @@ class ImageMosaic:
         return final_thresholds
 
 
+def _write_chunk_zarr(chunk, fused_image_store, block_info=None):
+    array_location = block_info[0]["array-location"]
+    fused_image_store[
+        array_location[0][0] : array_location[0][1],
+        array_location[1][0] : array_location[1][1],
+        array_location[2][0] : array_location[2][1],
+    ] = chunk
+
+
 def calculate_downsampled_image_shape(
-    image_shape: Tuple[int, int, int], downscale_factors: Tuple[int, int, int]
-) -> Tuple[int, int, int]:
-    new_shape = (
-        (image_shape[0] + (downscale_factors[0] > 1)) // downscale_factors[0],
-        (image_shape[1] + (downscale_factors[1] > 1)) // downscale_factors[1],
-        (image_shape[2] + (downscale_factors[2] > 1)) // downscale_factors[2],
+    image_shape: Tuple[int, ...], downscale_factors: Tuple[int, ...]
+) -> Tuple[int, ...]:
+    new_shape = tuple(
+        (curr_dim + (factor > 1)) // factor
+        for curr_dim, factor in zip(image_shape, downscale_factors)
     )
 
     return new_shape

@@ -343,6 +343,7 @@ class StitchingWidget(QWidget):
         """
         Add the tiles from the mesoSPIM h5 file to the viewer.
         """
+        self.add_tiles_button.setEnabled(False)
         self.image_mosaic = ImageMosaic(self.working_directory)
 
         self.fuse_channel_dropdown.clear()
@@ -360,21 +361,17 @@ class StitchingWidget(QWidget):
             self.resolution_to_display
         )
 
-        for napari_layer in add_tiles_from_mosaic(
-            napari_data, self.image_mosaic
-        ):
-            self._set_tile_layers(napari_layer)
-
-        # worker = create_worker(
-        #     add_tiles_from_mosaic, napari_data, self.image_mosaic
-        # )
-        # worker.yielded.connect(self._set_tile_layers)
-        # worker.start()
+        worker = create_worker(
+            add_tiles_from_mosaic, napari_data, self.image_mosaic
+        )
+        worker.yielded.connect(self._set_tile_layers)
+        worker.start()
 
         self.select_output_path_text_field.setText(str(self.working_directory))
         self.adjust_intensity_button.setEnabled(True)
         self.interpolate_button.setEnabled(True)
         self.fuse_button.setEnabled(True)
+        self.add_tiles_button.setEnabled(True)
 
     def _set_tile_layers(self, tile_layer: napari.layers.Image) -> None:
         """
@@ -492,7 +489,7 @@ class StitchingWidget(QWidget):
         Open a file dialog to select the output file path.
         """
         output_file_str = QFileDialog.getSaveFileName(
-            self, "Select output file", str(self.default_directory)
+            self, "Select output file", str(self.working_directory)
         )[0]
         # A blank string is returned if the user cancels the dialog
         if not output_file_str:
