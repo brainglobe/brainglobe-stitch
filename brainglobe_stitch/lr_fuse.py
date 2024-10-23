@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import SimpleITK as sitk
 from dask_image.ndinterp import affine_transform as da_affine_transform
+from distributed import LocalCluster
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.tile import Tile
@@ -95,9 +96,9 @@ def register_shutters(
 
 
 def blend_along_axis(
-    im1,
-    im2,
-    axis=0,
+    im1: da.Array,
+    im2: da.Array,
+    axis=2,
     blending_center_coord=None,
     pixel_width=None,
     weight_at_pixel_width=0.95,
@@ -107,9 +108,9 @@ def blend_along_axis(
 
     Parameters
     ----------
-    im1 : ndarray
+    im1 : da.Array
         input array with values to keep at starting coordinates
-    im2 : ndarray
+    im2 : da.Array
         input array with values to keep at ending coordinates
     axis : int
         axis along which to blend the two input arrays
@@ -140,9 +141,9 @@ def blend_along_axis(
     --------
     >>> import numpy as np
     >>> from scipy import ndimage
-    >>> im = np.random.randint(0, 1000, [7, 9, 9])
+    >>> im = da.random.randint(0, 1000, [7, 9, 9])
     >>> im = ndimage.zoom(im, [21]*3, order=1)
-    >>> degrad = np.exp(-0.01 * np.arange(len(im)))
+    >>> degrad = da.exp(-0.01 * da.arange(len(im)))
     >>> im_l = (im.T * degrad).T.astype(np.uint16)
     >>> im_r = (im.T * degrad[::-1]).T.astype(np.uint16)
     >>> blend_along_axis(im_l, im_r, axis=0, pixel_width=5)
@@ -171,28 +172,32 @@ def blend_along_axis(
     )
     sigmoid = sigmoid.astype(np.float32)
 
-    # swap array axes such that blending axis is last one
-    im1 = da.swapaxes(im1, -1, axis)
-    im2 = da.swapaxes(im2, -1, axis)
-
     # initialise output array
-    out = da.zeros_like(im1, chunks=(1, 2048, 2048))
+    out = da.zeros_like(im1, chunks=im1.chunksize)
 
     # define sub threshold regions
-    mask1 = sigmoid < weight_threshold
-    mask2 = sigmoid > (1 - weight_threshold)
-    maskb = ~(mask1 ^ mask2)
+    mask1_index = np.searchsorted(sigmoid, weight_threshold)
+    mask1_slices = [slice(None)] * len(shape)
+    mask1_slices[axis] = slice(None, mask1_index)
+
+    # Assume log is symmetric around center
+    mask2_index = im2.shape[0] - mask1_index
+    mask2_slices = [slice(None)] * len(shape)
+    mask2_slices[axis] = slice(mask2_index, None)
+    maskb_slices = [slice(None)] * len(shape)
+    maskb_slices[axis] = slice(mask2_index, mask1_index)
+
+    mask1 = tuple(mask1_slices)
+    mask2 = tuple(mask2_slices)
+    maskb = tuple(maskb_slices)
     # copy input arrays in sub threshold regions
-    out[..., mask1] = im1[..., mask1]
-    out[..., mask2] = im2[..., mask2]
+    out[mask1] = im1[mask1]
+    out[mask2] = im2[mask2]
 
     # blend
-    out[..., maskb] = (1 - sigmoid[maskb]) * im1[..., maskb] + sigmoid[
-        maskb
-    ] * im2[..., maskb]
-
-    # rearrange array
-    out = da.swapaxes(out, -1, axis)
+    out[maskb] = (1 - sigmoid[maskb[axis]]) * im1[maskb] + sigmoid[
+        maskb[axis]
+    ] * im2[maskb]
 
     return out
 
@@ -246,7 +251,10 @@ def l_r_fuse(
         transform_matrix = np.eye(4)
         transform_matrix[:3, 3] = descaled_offset
         left_tile.data_pyramid[0] = da_affine_transform(
-            left_tile.data_pyramid[0], transform_matrix, order
+            left_tile.data_pyramid[0],
+            transform_matrix,
+            order,
+            output_chunks=left_tile.data_pyramid[0].chunksize,
         )
 
         left_tile.data_pyramid[0] = blend_along_axis(
@@ -260,6 +268,9 @@ def l_r_fuse(
 
 
 if __name__ == "__main__":
+    cluster = LocalCluster(n_workers=8)
+    client = cluster.get_client()
+
     fused_file_name = "fused.zarr"
     working_dir = Path("/mnt/Data/Phillip/")
     output_path = working_dir / fused_file_name
@@ -268,3 +279,6 @@ if __name__ == "__main__":
     fused_mosaic = l_r_fuse(image_mosaic_in)
 
     fused_mosaic.fuse(output_path)
+
+    client.close()
+    cluster.close()
