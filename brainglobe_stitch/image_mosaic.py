@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Sequence
 from pathlib import Path
 from time import sleep
 from typing import Dict, List, Optional, Tuple
@@ -179,7 +180,9 @@ class ImageMosaic:
 
         self.channel_names = get_channel_names(self.xml_path)
 
-        resolutions_from_metadata = get_resolution(self.xml_path)
+        resolutions_from_metadata: Tuple[float, ...] = get_resolution(
+            self.xml_path
+        )
         self.x_y_resolution = resolutions_from_metadata[0]
         self.z_resolution = resolutions_from_metadata[-1]
         self.num_channels = len(self.channel_names)
@@ -740,13 +743,6 @@ class ImageMosaic:
             )
 
             factors = (1, *downscale_factors)
-            # downsampled_image = da.from_array(
-            #   downsample_anisotropic_image_stack(
-            #     prev_resolution, factors[2], factors[1]
-            # ), chunks=chunk_shape)
-            # downsampled_shape = calculate_downsampled_image_shape(
-            #   prev_resolution.shape, factors
-            # )
             downsampled_image = downscale_nearest(prev_resolution, factors)
             downsampled_shape = downsampled_image.shape
             downsampled_store = root.require_dataset(
@@ -822,13 +818,13 @@ class ImageMosaic:
         output_file = h5py.File(output_path, mode="w")
 
         # Metadata is in x, y, z order for Big Data Viewer
-        downscale_factors_array = np.array(downscale_factors)
+        downscale_factors_array = np.array(downscale_factors, dtype=np.int16)
         resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
 
         for i in range(1, pyramid_depth):
             resolutions[i, :] = downscale_factors_array[-1::-1] ** i
 
-        channel_ds_list: List[List[h5py.Dataset]] = []
+        da_list: List[List[da.Array]] = []
         for i in range(self.num_channels):
             # Write the resolutions and subdivisions for each channel
             temp_chunk_shape = chunk_shape
@@ -847,72 +843,81 @@ class ImageMosaic:
             if np.any(np.array(fused_image_shape) < temp_chunk_shape):
                 temp_chunk_shape = fused_image_shape
 
-            # Create the datasets for each resolution level
-            ds_list: List[h5py.Dataset] = []
-            ds = output_file.require_dataset(
-                f"t00000/s{i:02}/0/cells",
-                shape=fused_image_shape,
-                chunks=temp_chunk_shape,
-                dtype="i2",
-            )
-            ds_list.append(ds)
+            # Create the dask arrays for each resolution level
+            sub_list: List[da.Array] = [
+                da.zeros(
+                    fused_image_shape, dtype="i2", chunks=temp_chunk_shape
+                )
+            ]
+
             # Set the chunk shape for the first resolution level
             # Flip the shape to match the x, y, z order
             output_file[f"s{i:02}/subdivisions"][0] = temp_chunk_shape[::-1]
             new_shape = fused_image_shape
 
             for j in range(1, len(resolutions)):
-                new_shape = calculate_downsampled_image_shape(
+                new_shape = calculate_downsampled_image_coordinates(
                     new_shape, downscale_factors
                 )
 
                 if np.any(np.array(new_shape) < temp_chunk_shape):
                     temp_chunk_shape = new_shape
 
-                down_ds = output_file.require_dataset(
-                    f"t00000/s{i:02}/{j}/cells",
-                    shape=new_shape,
-                    chunks=temp_chunk_shape,
-                    dtype="i2",
+                sub_list.append(
+                    da.zeros(new_shape, dtype="i2", chunks=temp_chunk_shape)
                 )
 
-                ds_list.append(down_ds)
                 # Set the chunk shape for the other resolution levels
                 # Flip the shape to match the x, y, z order
                 output_file[f"s{i:02}/subdivisions"][j] = temp_chunk_shape[
                     ::-1
                 ]
 
-            channel_ds_list.append(ds_list)
+            # channel_ds_list.append(ds_list)
+            da_list.append(sub_list)
 
-        # Place the tiles in reverse order of acquisition
+        # Close the output file to let Dask deal with writing to it
+        output_file.close()
+
         for tile in self.tiles[-1::-1]:
-            current_tile_data = tile.data_pyramid[0].compute()
-            channel_ds_list[tile.channel_id][0][
-                tile.position[0] : tile.position[0] + z_size,
-                tile.position[1] : tile.position[1] + y_size,
-                tile.position[2] : tile.position[2] + x_size,
-            ] = current_tile_data
+            scaled_position: Tuple[slice, ...] = (
+                slice(tile.position[0], tile.position[0] + z_size),
+                slice(tile.position[1], tile.position[1] + y_size),
+                slice(tile.position[2], tile.position[2] + x_size),
+            )
+            da_list[tile.channel_id][0][scaled_position] = tile.data_pyramid[0]
 
-            # Use a simple downsample for the other resolutions
-            for i in range(1, len(resolutions)):
-                scaled_position = tile.position // resolutions[i, -1::-1]
-                scaled_size = (
-                    (z_size + (resolutions[i][2] > 1)) // resolutions[i][2],
-                    (y_size + (resolutions[i][1] > 1)) // resolutions[i][1],
-                    (x_size + (resolutions[i][0] > 1)) // resolutions[i][0],
+            for i in range(1, pyramid_depth):
+                curr_factors = resolutions[i][-1::-1]
+                scaled_position_start = (
+                    calculate_downsampled_image_coordinates(
+                        tile.position, curr_factors
+                    )
                 )
-                channel_ds_list[tile.channel_id][i][
-                    scaled_position[0] : scaled_position[0] + scaled_size[0],
-                    scaled_position[1] : scaled_position[1] + scaled_size[1],
-                    scaled_position[2] : scaled_position[2] + scaled_size[2],
-                ] = current_tile_data[
-                    :: resolutions[i][2],
-                    :: resolutions[i][1],
-                    :: resolutions[i][0],
-                ]
+                scaled_shape = calculate_downsampled_image_coordinates(
+                    tile.data_pyramid[0].shape, curr_factors
+                )
+                steps = tuple(
+                    slice(sc.start, sc.stop, factor)
+                    for sc, factor in zip(scaled_position, downscale_factors)
+                )
+                scaled_position = tuple(
+                    slice(pos, pos + size)
+                    for pos, size in zip(scaled_position_start, scaled_shape)
+                )
+                da_list[tile.channel_id][i][scaled_position] = da_list[
+                    tile.channel_id
+                ][i - 1][steps]
 
             print(f"Done tile {tile.id}")
+
+        for i in range(len(da_list)):
+            write_dict = {
+                f"t00000/s{i:02}/{j}/cells": da_list[i][j]
+                for j in range(pyramid_depth)
+            }
+
+            da.to_hdf5(output_path, write_dict)
 
         assert self.xml_path is not None
 
@@ -921,8 +926,6 @@ class ImageMosaic:
             output_path,
             fused_image_shape,
         )
-
-        output_file.close()
 
     def _generate_metadata_for_zarr(
         self,
@@ -1129,8 +1132,8 @@ def _write_chunk_zarr(chunk, fused_image_store, block_info=None):
     ] = chunk
 
 
-def calculate_downsampled_image_shape(
-    image_shape: Tuple[int, ...], downscale_factors: Tuple[int, ...]
+def calculate_downsampled_image_coordinates(
+    image_shape: Sequence[int], downscale_factors: Sequence[int]
 ) -> Tuple[int, ...]:
     new_shape = tuple(
         (curr_dim + (factor > 1)) // factor
