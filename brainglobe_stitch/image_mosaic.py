@@ -1040,7 +1040,7 @@ class ImageMosaic:
             The shape of the fused image.
         """
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
-        batch_size = self.tiles[0].data_pyramid[0].chunksize[0]
+        batch_size = 16
 
         batched_image_shape = (batch_size, *fused_image_shape[1:])
 
