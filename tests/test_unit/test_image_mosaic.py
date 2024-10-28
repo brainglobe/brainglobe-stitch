@@ -206,7 +206,7 @@ def test_normalise_intensity_done_with_factors(
     assert image_mosaic.intensity_adjusted[resolution_level]
     assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
 
-    mock_calc_intensity_factors.called_once_with(resolution_level, 50)
+    mock_calc_intensity_factors.assert_called_once_with(resolution_level, 80)
 
     # Check that no scale adjustment calculations are queued for the tiles
     # at the specified resolution level as the correction factors were
