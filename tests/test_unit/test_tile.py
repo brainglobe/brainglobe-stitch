@@ -1,4 +1,106 @@
-from brainglobe_stitch.tile import Tile
+from typing import List, Tuple
+
+import dask.array as da
+import numpy as np
+import numpy.typing as npt
+import pytest
+
+from brainglobe_stitch.tile import Overlap, Tile
+
+TILE_DATA_HIGH = 100
+
+
+def generate_tile(tile_data: da.Array):
+    """
+    Generate an image pyramid and resolution pyramid from the tile data.#
+    Will generate a pyramid with 3 levels of resolution. Downscaling by a
+    factor of 2 in each dimension.
+
+    Parameters
+    ----------
+    tile_data : da.Array
+        The tile data to generate the pyramid from.
+
+    Returns
+    -------
+    Tuple[List[da.Array], npt.NDArray]
+        The image pyramid and resolution pyramid.
+    """
+    resolution_array = np.array([[1, 1, 1], [2, 2, 2], [4, 4, 4]])
+
+    image_pyramid = [tile_data]
+
+    for i in range(1, len(resolution_array)):
+        image_pyramid.append(
+            tile_data[
+                :: resolution_array[i][0],
+                :: resolution_array[i][1],
+                :: resolution_array[i][2],
+            ]
+        )
+
+    return image_pyramid, resolution_array
+
+
+def generate_tile_data_random() -> Tuple[List[da.Array], npt.NDArray]:
+    """
+    Generate tile data with random values.
+
+    Returns
+    -------
+    Tuple[List[da.Array], npt.NDArray]
+        The tile data pyramid and resolution pyramid.
+    """
+    image_data = da.random.randint(0, 5000, (256, 256, 256), dtype=np.int16)
+
+    return generate_tile(image_data)
+
+
+@pytest.fixture
+def generate_overlap():
+    """
+    Generate an overlap between two tiles. The overlap is set such that the
+    two tiles overlap in the x, y, and z dimensions. The overlap is set to
+    be [246, 26, 251] in size.
+
+    Returns
+    -------
+    Overlap
+        The overlap object for testing.
+    """
+    tile_i = Tile(
+        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
+    )
+    tile_j = Tile(
+        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
+    )
+
+    # Set the position such that there is an overlap of size [246, 26, 251]
+    tile_i.position = np.array([10, 0, 10])
+    tile_j.position = np.array([0, 230, 15])
+
+    (
+        tile_i.data_pyramid,
+        tile_i.resolution_pyramid,
+    ) = generate_tile_data_random()
+    (
+        tile_j.data_pyramid,
+        tile_j.resolution_pyramid,
+    ) = generate_tile_data_random()
+
+    overlap_coordinates = np.array(
+        [max(tile_i.position[i], tile_j.position[i]) for i in range(3)]
+    )
+
+    overlap_size = (
+        tile_i.data_pyramid[0].shape
+        - overlap_coordinates
+        + np.array(
+            [min(tile_i.position[i], tile_j.position[i]) for i in range(3)]
+        )
+    )
+
+    return Overlap(overlap_coordinates, overlap_size, tile_i, tile_j)
 
 
 def test_tile_init():
@@ -27,3 +129,86 @@ def test_tile_init():
     assert tile.channel_name == ""
     assert tile.illumination_id == illumination_id
     assert tile.angle == angle
+
+
+def test_overlap_init(generate_overlap):
+    overlap = generate_overlap
+
+    tile_j = overlap.tiles[1]
+
+    # Check that the overlap coordinates have the correct dimensionality
+    assert overlap.coordinates.shape == (3,)
+    assert overlap.size[0].shape == (3,)
+    # Check that the overlap size and local coordinates are calculated
+    # for each level of the resolution pyramid
+    assert len(overlap.size) == len(tile_j.resolution_pyramid)
+    assert len(overlap.local_coordinates) == len(tile_j.resolution_pyramid)
+
+
+def test_get_local_coordinates(generate_overlap):
+    """
+    Test that the local coordinates are calculated correctly for the overlap.
+    """
+    overlap = generate_overlap
+    tile_i, tile_j = overlap.tiles
+
+    # Calculate the expected local coordinates for the overlap
+    expected_i_position = overlap.coordinates - tile_i.position
+    expected_j_position = overlap.coordinates - tile_j.position
+
+    assert (overlap.local_coordinates[0][0] == expected_i_position).all()
+    assert (overlap.local_coordinates[0][1] == expected_j_position).all()
+
+
+def test_extract_tile_overlaps(generate_overlap):
+    """
+    Test that the overlap data is extracted correctly from the tiles.
+    """
+    overlap = generate_overlap
+
+    local_coord = overlap.local_coordinates[0]
+
+    overlaps = overlap.extract_tile_overlaps(0)
+
+    for i in range(len(local_coord)):
+        assert overlaps[i].shape == tuple(overlap.size[0])
+        assert (
+            overlaps[i]
+            == overlap.tiles[i].data_pyramid[0][
+                local_coord[i][0] : local_coord[i][0] + overlap.size[0][0],
+                local_coord[i][1] : local_coord[i][1] + overlap.size[0][1],
+                local_coord[i][2] : local_coord[i][2] + overlap.size[0][2],
+            ]
+        ).all()
+
+
+def test_replace_overlap_data(generate_overlap):
+    """
+    Test that the overlap data is replaced with zeros at the base
+    resolution level.
+    """
+    overlap = generate_overlap
+
+    new_data = da.zeros(overlap.size[0], dtype=np.int16)
+    overlap.replace_overlap_data(0, new_data)
+    res_level = 0
+
+    # Check that the overlap data has been replaced with zeros
+    for i in range(len(overlap.tiles)):
+        assert (
+            overlap.tiles[i].data_pyramid[res_level][
+                overlap.local_coordinates[res_level][i][
+                    0
+                ] : overlap.local_coordinates[res_level][i][0]
+                + overlap.size[res_level][0],
+                overlap.local_coordinates[res_level][i][
+                    1
+                ] : overlap.local_coordinates[res_level][i][1]
+                + overlap.size[res_level][1],
+                overlap.local_coordinates[res_level][i][
+                    2
+                ] : overlap.local_coordinates[res_level][i][2]
+                + overlap.size[res_level][2],
+            ]
+            == 0
+        ).all()

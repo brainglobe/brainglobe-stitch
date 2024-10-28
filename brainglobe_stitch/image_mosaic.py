@@ -23,7 +23,7 @@ from brainglobe_stitch.file_utils import (
     parse_mesospim_metadata,
     safe_find,
 )
-from brainglobe_stitch.tile import Tile
+from brainglobe_stitch.tile import Overlap, Tile
 
 
 class ImageMosaic:
@@ -50,6 +50,8 @@ class ImageMosaic:
         The tiles in the image.
     tile_names : List[str]
         The names of the image tiles from BigDataViewer.
+    overlaps : Dict[Tuple[int, int], Overlap]
+        A dictionary of tile pairs and their overlaps.
     x_y_resolution : float
         The resolution of the image in the x and y dimensions
         in micrometers per pixel.
@@ -71,6 +73,7 @@ class ImageMosaic:
         self.tiles: List[Tile] = []
         self.tile_names: List[str] = []
         self.tile_metadata: List[Dict] = []
+        self.overlaps: Dict[Tuple[int, int], Overlap] = {}
         self.x_y_resolution: float = 4.0  # um per pixel
         self.z_resolution: float = 5.0  # um per pixel
         self.num_channels: int = 1
@@ -78,7 +81,7 @@ class ImageMosaic:
         self.load_mesospim_directory()
 
     def __del__(self):
-        if self.h5_file is not None:
+        if self.h5_file:
             self.h5_file.close()
             self.h5_file = None
 
@@ -223,6 +226,8 @@ class ImageMosaic:
                 ]
                 tile.position = translation
 
+        self.calculate_overlaps()
+
     def write_big_stitcher_tile_config(self, meta_file_name: Path) -> None:
         """
         Write the BigStitcher tile configuration file
@@ -337,6 +342,8 @@ class ImageMosaic:
 
         self.read_big_stitcher_transforms()
 
+        self.calculate_overlaps()
+
     def read_big_stitcher_transforms(self) -> None:
         """
         Read the BigStitcher transforms from the XML file and update the tile
@@ -347,6 +354,48 @@ class ImageMosaic:
         for tile in self.tiles:
             stitched_position = stitched_translations[tile.id]
             tile.position = stitched_position
+
+    def calculate_overlaps(self) -> None:
+        """
+        Calculate the overlaps between the tiles in the ImageMosaic.
+        """
+        self.overlaps = {}
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        for tile_i in self.tiles[:-1]:
+            position_i = tile_i.position
+            tile_i.neighbours = []
+            for tile_j in self.tiles[tile_i.id + 1 :]:
+                position_j = tile_j.position
+
+                # Check for overlap in the x and y dimensions
+                # and that the tiles do not have the same tile_id
+                # and that the tiles are from the same channel
+                if (
+                    (
+                        position_i[1] + y_size > position_j[1]
+                        and position_i[1] < position_j[1] + y_size
+                    )
+                    and (
+                        position_i[2] + x_size > position_j[2]
+                        and position_i[2] < position_j[2] + x_size
+                    )
+                    and (tile_i.tile_id != tile_j.tile_id)
+                    and (tile_i.channel_id == tile_j.channel_id)
+                ):
+                    starts = np.array(
+                        [max(position_i[i], position_j[i]) for i in range(3)]
+                    )
+                    ends = np.add(
+                        [min(position_i[i], position_j[i]) for i in range(3)],
+                        [z_size, y_size, x_size],
+                    )
+                    size = np.subtract(ends, starts)
+
+                    self.overlaps[(tile_i.id, tile_j.id)] = Overlap(
+                        starts, size, tile_i, tile_j
+                    )
+                    tile_i.neighbours.append(tile_j.id)
 
     def fuse(
         self,
