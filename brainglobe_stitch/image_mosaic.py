@@ -1,11 +1,17 @@
+import copy
 from pathlib import Path
 from time import sleep
 from typing import Dict, List, Optional, Tuple
+from xml.etree import ElementTree as ET
 
 import dask.array as da
 import h5py
 import numpy as np
 import numpy.typing as npt
+import zarr
+from numcodecs import Blosc
+from ome_zarr.dask_utils import downscale_nearest
+from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
 
 from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
@@ -15,6 +21,7 @@ from brainglobe_stitch.file_utils import (
     get_big_stitcher_transforms,
     get_slice_attributes,
     parse_mesospim_metadata,
+    safe_find,
 )
 from brainglobe_stitch.tile import Tile
 
@@ -340,3 +347,524 @@ class ImageMosaic:
         for tile in self.tiles:
             stitched_position = stitched_translations[tile.id]
             tile.position = stitched_position
+
+    def fuse(
+        self,
+        output_file_name: str,
+        downscale_factors: Tuple[int, int, int] = (1, 2, 2),
+        chunk_shape: Tuple[int, int, int] = (128, 128, 128),
+        pyramid_depth: int = 5,
+        compression_method: str = "zstd",
+        compression_level: int = 6,
+    ) -> None:
+        """
+        Fuse the tiles into a single image and save it to the output file.
+
+        Parameters
+        ----------
+        output_file_name: str
+            The name of the output file, suffix dictates the output file type.
+            Accepts .zarr and .h5 extensions.
+        downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
+            The factors to downscale the image by in the z, y, x dimensions.
+        chunk_shape: Tuple[int, ...], default: (128, 128, 128)
+            The shape of the chunks in the zarr file.
+        pyramid_depth: int, default: 5
+            The depth of the resolution pyramid.
+        compression_method: str, default: "zstd"
+            The compression algorithm to use (only used for zarr).
+        compression_level: int, default: 6
+            The compression level to use (only used for zarr).
+        """
+        output_path = self.directory / output_file_name
+
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        # Calculate the shape of the fused image
+        fused_image_shape: Tuple[int, int, int] = (
+            max([tile.position[0] for tile in self.tiles]) + z_size,
+            max([tile.position[1] for tile in self.tiles]) + y_size,
+            max([tile.position[2] for tile in self.tiles]) + x_size,
+        )
+
+        if output_path.suffix == ".zarr":
+            self._fuse_to_zarr(
+                output_path,
+                fused_image_shape,
+                downscale_factors,
+                pyramid_depth,
+                chunk_shape,
+                compression_method,
+                compression_level,
+            )
+        elif output_path.suffix == ".h5":
+            self._fuse_to_bdv_h5(
+                output_path,
+                fused_image_shape,
+                downscale_factors,
+                pyramid_depth,
+                chunk_shape,
+            )
+        else:
+            raise ValueError(
+                "Invalid output file type. "
+                "Currently, .zarr and .h5 are supported."
+            )
+
+        print(f"Fused image saved to {output_path}")
+
+    def _fuse_to_zarr(
+        self,
+        output_path: Path,
+        fused_image_shape: Tuple[int, ...],
+        downscale_factors: Tuple[int, int, int],
+        pyramid_depth: int,
+        chunk_shape: Tuple[int, ...],
+        compression_method: str,
+        compression_level: int,
+    ) -> None:
+        """
+        Fuse the tiles in the ImageMosaic into a single image and save it as a
+        zarr file.
+
+        Parameters
+        ----------
+        output_path: Path
+            The path of the output file.
+        fused_image_shape: Tuple[int, ...]
+            The shape of the fused image.
+        downscale_factors: Tuple[int, int, int]
+            The factors to downscale the image by in the z, y, x dimensions.
+        pyramid_depth: int,
+            The depth of the resolution pyramid.
+        chunk_shape: Tuple[int, ...],
+            The shape of the chunks in the zarr file.
+        compression_method: str, default: "zstd"
+            The compression algorithm to use.
+        compression_level: int, default: 3
+            The compression level to use.
+        """
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+
+        transformation_metadata, axes_metadata = (
+            self._generate_metadata_for_zarr(pyramid_depth, downscale_factors)
+        )
+
+        fused_image_shape = (self.num_channels, *fused_image_shape)
+        chunk_shape = (self.num_channels, *chunk_shape)
+
+        store = zarr.NestedDirectoryStore(str(output_path))
+        root = zarr.group(store=store)
+        compressor = Blosc(
+            cname=compression_method,
+            clevel=compression_level,
+            shuffle=Blosc.SHUFFLE,
+        )
+
+        fused_image_store = root.create(
+            "0",
+            shape=fused_image_shape,
+            chunks=chunk_shape,
+            dtype="i2",
+            compressor=compressor,
+        )
+
+        # Place the tiles in reverse order of acquisition
+        for tile in self.tiles[-1::-1]:
+            fused_image_store[
+                tile.channel_id,
+                tile.position[0] : tile.position[0] + z_size,
+                tile.position[1] : tile.position[1] + y_size,
+                tile.position[2] : tile.position[2] + x_size,
+            ] = tile.data_pyramid[0].compute()
+
+            print(f"Done tile {tile.id}")
+
+        for i in range(1, len(transformation_metadata)):
+            prev_resolution = da.from_zarr(
+                root[str(i - 1)], chunks=chunk_shape
+            )
+
+            factors = (1, *downscale_factors)
+            downsampled_image = downscale_nearest(prev_resolution, factors)
+
+            downsampled_shape = downsampled_image.shape
+            downsampled_store = root.require_dataset(
+                f"{i}",
+                shape=downsampled_shape,
+                chunks=chunk_shape,
+                dtype="i2",
+                compressor=compressor,
+            )
+            downsampled_image.to_zarr(downsampled_store)
+
+            print(f"Done resolution {i}")
+
+        # Create the datasets containing the correct scaling transforms
+        datasets = []
+        for i, transform in enumerate(transformation_metadata):
+            datasets.append(
+                {"path": f"{i}", "coordinateTransformations": transform}
+            )
+
+        write_multiscales_metadata(
+            group=root,
+            datasets=datasets,
+            axes=axes_metadata,
+        )
+
+        channel_thresholds = self.calculate_contrast_max()
+        # Create the channels attribute
+        channels = []
+        for i, name in enumerate(self.channel_names):
+            channels.append(
+                {
+                    "active": True,
+                    "color": "FFFFFF",
+                    "label": name,
+                    "window": {
+                        "start": 0,
+                        "end": channel_thresholds[name] * 1.5,
+                        "min": 0,
+                        "max": 65535,
+                    },
+                }
+            )
+
+        root.attrs["omero"] = {"channels": channels}
+
+    def _fuse_to_bdv_h5(
+        self,
+        output_path: Path,
+        fused_image_shape: Tuple[int, int, int],
+        downscale_factors: Tuple[int, int, int],
+        pyramid_depth,
+        chunk_shape: Tuple[int, int, int],
+    ) -> None:
+        """
+        Fuse the tiles in the ImageMosaic into a single image and save it as a
+        Big Data Viewer h5 file.
+
+        Parameters
+        ----------
+        output_path: Path
+            The path of the output file.
+        fused_image_shape: Tuple[int, ...]
+            The shape of the fused image.
+        downscale_factors: Tuple[int, int, int],
+            The factors to downscale the image by in the z, y, x dimensions.
+        pyramid_depth: int,
+            The depth of the resolution pyramid.
+        chunk_shape: Tuple[int, int, int],
+            The shape of the chunks in the h5 file.
+        """
+        z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
+        output_file = h5py.File(output_path, mode="w")
+
+        # Metadata is in x, y, z order for Big Data Viewer
+        downscale_factors_array = np.array(downscale_factors)
+        resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
+
+        for i in range(1, pyramid_depth):
+            resolutions[i, :] = downscale_factors_array[-1::-1] ** i
+
+        channel_ds_list: List[List[h5py.Dataset]] = []
+        for i in range(self.num_channels):
+            # Write the resolutions and subdivisions for each channel
+            temp_chunk_shape = chunk_shape
+            output_file.require_dataset(
+                f"s{i:02}/resolutions",
+                data=resolutions,
+                dtype="i2",
+                shape=resolutions.shape,
+            )
+            output_file.create_dataset(
+                f"s{i:02}/subdivisions",
+                dtype="i2",
+                shape=resolutions.shape,
+            )
+
+            if np.any(np.array(fused_image_shape) < temp_chunk_shape):
+                temp_chunk_shape = fused_image_shape
+
+            # Create the datasets for each resolution level
+            ds_list: List[h5py.Dataset] = []
+            ds = output_file.require_dataset(
+                f"t00000/s{i:02}/0/cells",
+                shape=fused_image_shape,
+                chunks=temp_chunk_shape,
+                dtype="i2",
+            )
+            ds_list.append(ds)
+            # Set the chunk shape for the first resolution level
+            # Flip the shape to match the x, y, z order
+            output_file[f"s{i:02}/subdivisions"][0] = temp_chunk_shape[::-1]
+            new_shape = fused_image_shape
+
+            for j in range(1, len(resolutions)):
+                new_shape = calculate_downsampled_image_shape(
+                    new_shape, downscale_factors
+                )
+
+                if np.any(np.array(new_shape) < temp_chunk_shape):
+                    temp_chunk_shape = new_shape
+
+                down_ds = output_file.require_dataset(
+                    f"t00000/s{i:02}/{j}/cells",
+                    shape=new_shape,
+                    chunks=temp_chunk_shape,
+                    dtype="i2",
+                )
+
+                ds_list.append(down_ds)
+                # Set the chunk shape for the other resolution levels
+                # Flip the shape to match the x, y, z order
+                output_file[f"s{i:02}/subdivisions"][j] = temp_chunk_shape[
+                    ::-1
+                ]
+
+            channel_ds_list.append(ds_list)
+
+        # Place the tiles in reverse order of acquisition
+        for tile in self.tiles[-1::-1]:
+            current_tile_data = tile.data_pyramid[0].compute()
+            channel_ds_list[tile.channel_id][0][
+                tile.position[0] : tile.position[0] + z_size,
+                tile.position[1] : tile.position[1] + y_size,
+                tile.position[2] : tile.position[2] + x_size,
+            ] = current_tile_data
+
+            # Use a simple downsample for the other resolutions
+            for i in range(1, len(resolutions)):
+                scaled_position = tile.position // resolutions[i, -1::-1]
+                scaled_size = (
+                    (z_size + (resolutions[i][2] > 1)) // resolutions[i][2],
+                    (y_size + (resolutions[i][1] > 1)) // resolutions[i][1],
+                    (x_size + (resolutions[i][0] > 1)) // resolutions[i][0],
+                )
+                channel_ds_list[tile.channel_id][i][
+                    scaled_position[0] : scaled_position[0] + scaled_size[0],
+                    scaled_position[1] : scaled_position[1] + scaled_size[1],
+                    scaled_position[2] : scaled_position[2] + scaled_size[2],
+                ] = current_tile_data[
+                    :: resolutions[i][2],
+                    :: resolutions[i][1],
+                    :: resolutions[i][0],
+                ]
+
+            print(f"Done tile {tile.id}")
+
+        assert self.xml_path is not None
+
+        self._write_bdv_xml(
+            output_path.with_suffix(".xml"),
+            output_path,
+            fused_image_shape,
+        )
+
+        output_file.close()
+
+    def _generate_metadata_for_zarr(
+        self,
+        pyramid_depth: int,
+        downscale_factors: Tuple[int, int, int],
+    ) -> Tuple[List[List[Dict]], List[Dict]]:
+        """
+        Prepare the metadata for a zarr file. The metadata conforms to the
+        OME-Zarr specification (https://ngff.openmicroscopy.org/latest/).
+
+        Generates the coordinate transformations and axes metadata to be
+        written to the fused zarr file.
+        Parameters
+        ----------
+        pyramid_depth: int
+            The depth of the resolution pyramid.
+        downscale_factors: Tuple[int, int, int]
+            The factors to downscale the image by in the z, y, x dimensions.
+
+        Returns
+        -------
+        Tuple[List[List[Dict]], List[Dict]]
+            A tuple with the coordinate transformations and axes metadata.
+        """
+        axes = [
+            {"name": "c", "type": "channel"},
+            {"name": "z", "type": "space", "unit": "micrometer"},
+            {"name": "y", "type": "space", "unit": "micrometer"},
+            {"name": "x", "type": "space", "unit": "micrometer"},
+        ]
+
+        coordinate_transformations = []
+        for i in range(pyramid_depth):
+            coordinate_transformations.append(
+                [
+                    {
+                        "type": "scale",
+                        "scale": [
+                            1.0,
+                            self.z_resolution * downscale_factors[0] ** i,
+                            self.x_y_resolution * downscale_factors[1] ** i,
+                            self.x_y_resolution * downscale_factors[2] ** i,
+                        ],
+                    }
+                ]
+            )
+
+        return coordinate_transformations, axes
+
+    def _write_bdv_xml(
+        self,
+        output_xml_path: Path,
+        hdf5_path: Path,
+        image_size: Tuple[int, ...],
+    ) -> None:
+        """
+        Write a Big Data Viewer (BDV) XML file.
+
+        Parameters
+        ----------
+        output_xml_path: Path
+            The path to the output BDV XML file.
+        hdf5_path:
+            The path to the output HDF5 file.
+        image_size:
+            The size of the image in pixels.
+        """
+        if self.xml_path is None:
+            raise ValueError("No input XML file provided.")
+
+        input_tree = ET.parse(self.xml_path)
+        input_root = input_tree.getroot()
+        base_path = safe_find(input_root, ".//BasePath")
+
+        root = ET.Element("SpimData", version="0.2")
+        root.append(base_path)
+
+        sequence_desc = ET.SubElement(root, "SequenceDescription")
+
+        image_loader = safe_find(input_root, ".//ImageLoader")
+        hdf5_path_node = safe_find(image_loader, ".//hdf5")
+        # Replace the hdf5 path with the new relative path
+        hdf5_path_node.text = str(hdf5_path.name)
+        sequence_desc.append(image_loader)
+
+        view_setup = safe_find(input_root, ".//ViewSetup")
+        # Replace the size of the image with the new size
+        # The image shape is in z,y,x order,
+        # metadata needs to be in x,y,z order
+        view_setup[2].text = f"{image_size[2]} {image_size[1]} {image_size[0]}"
+
+        view_setups = ET.SubElement(sequence_desc, "ViewSetups")
+        view_setups.append(view_setup)
+
+        # Add the view setups for the other channels
+        for i in range(1, self.num_channels):
+            view_setup_copy = copy.deepcopy(view_setup)
+            view_setup_copy[0].text = f"{i}"
+            view_setup_copy[1].text = f"setup {i}"
+            view_setup_copy[4][1].text = f"{i}"
+            view_setups.append(view_setup_copy)
+
+        attributes_illumination = safe_find(
+            input_root, ".//Attributes[@name='illumination']"
+        )
+        view_setups.append(attributes_illumination)
+
+        attributes_channel = safe_find(
+            input_root, ".//Attributes[@name='channel']"
+        )
+        view_setups.append(attributes_channel)
+
+        attributes_tiles = ET.SubElement(
+            view_setups, "Attributes", name="tile"
+        )
+        tile = safe_find(input_root, ".//Tile/[id='0']")
+        attributes_tiles.append(tile)
+
+        attributes_angles = safe_find(
+            input_root, ".//Attributes[@name='angle']"
+        )
+        view_setups.append(attributes_angles)
+
+        timepoints = safe_find(input_root, ".//Timepoints")
+        sequence_desc.append(timepoints)
+
+        # Missing views are not necessary for the BDV XML
+        # May not be present in all BDV XML files
+        try:
+            missing_views = safe_find(input_root, ".//MissingViews")
+            sequence_desc.append(missing_views)
+        except ValueError as e:
+            print(e)
+
+        view_registrations = ET.SubElement(root, "ViewRegistrations")
+
+        # Write the calibrations for each channel
+        # Allows BDV to convert pixel coordinates to physical coordinates
+        for i in range(self.num_channels):
+            view_registration = ET.SubElement(
+                view_registrations,
+                "ViewRegistration",
+                attrib={"timepoint": "0", "setup": f"{i}"},
+            )
+            calibration = safe_find(
+                input_root, ".//ViewTransform/[Name='calibration']"
+            )
+            view_registration.append(calibration)
+
+        tree = ET.ElementTree(root)
+        # Add a two space indentation to the file
+        ET.indent(tree, space="  ")
+        tree.write(output_xml_path, encoding="utf-8", xml_declaration=True)
+
+    def calculate_contrast_max(
+        self, pyramid_level: int = 3
+    ) -> Dict[str, float]:
+        """
+        Calculate the appropriate contrast max for each channel.
+
+        The 99th percentile of the middle slice of each tile is calculated.
+        The maximum of these values is taken as the threshold for each channel.
+
+        Parameters
+        ----------
+        pyramid_level: int
+            The pyramid level at which the contrast max is to be calculated.
+
+        Returns
+        -------
+        Dict[str, float]
+            A dictionary containing the channel names as keys
+            and the contrast maxes as values.
+        """
+        middle_slice_index = (
+            self.tiles[0].data_pyramid[pyramid_level].shape[0] // 2
+        )
+        thresholds: Dict[str, List[float]] = {}
+
+        for tile in self.tiles:
+            tile_data = tile.data_pyramid[pyramid_level]
+            curr_threshold = np.percentile(
+                tile_data[middle_slice_index].ravel(), 99
+            ).compute()[0]
+            threshold_list = thresholds.get(tile.channel_name, [])
+            threshold_list.append(curr_threshold)
+            thresholds[tile.channel_name] = threshold_list
+
+        final_thresholds: Dict[str, float] = {
+            channel: np.max(thresholds.get(channel))
+            for channel, threshold_value in thresholds.items()
+        }
+
+        return final_thresholds
+
+
+def calculate_downsampled_image_shape(
+    image_shape: Tuple[int, int, int], downscale_factors: Tuple[int, int, int]
+) -> Tuple[int, int, int]:
+    new_shape = (
+        (image_shape[0] + (downscale_factors[0] > 1)) // downscale_factors[0],
+        (image_shape[1] + (downscale_factors[1] > 1)) // downscale_factors[1],
+        (image_shape[2] + (downscale_factors[2] > 1)) // downscale_factors[2],
+    )
+
+    return new_shape

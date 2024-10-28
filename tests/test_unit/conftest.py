@@ -1,9 +1,13 @@
+import os
 import shutil
 from pathlib import Path
 from platform import system
 
+import numpy as np
 import pooch
 import pytest
+
+from brainglobe_stitch.image_mosaic import ImageMosaic
 
 TEMP_DIR = Path.home() / "temp_test_directory"
 TEST_DATA_URL = "https://gin.g-node.org/IgorTatarnikov/brainglobe-stitch-test/raw/master/brainglobe-stitch/brainglobe-stitch-test-data.zip"
@@ -23,7 +27,7 @@ def download_test_data():
     TEMP_DIR.mkdir(exist_ok=True)
     pooch.retrieve(
         TEST_DATA_URL,
-        known_hash="9437cb05566f03cd78cd905da1cd939dd1bb439837f96e32c6fb818b9b010a6e",
+        known_hash="7f9684db81af4210becaaa4b4d59f3f414e4710bac6e6cab1bffdd9624e78952",
         processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
     )
 
@@ -74,6 +78,30 @@ def naive_bdv_directory():
     yield test_dir
 
     shutil.rmtree(test_dir)
+
+
+@pytest.fixture(scope="module")
+def image_mosaic(naive_bdv_directory):
+    """
+    Fixture for creating an ImageMosaic object for testing. A clean directory
+    is created for this module using the naive_bdv_directory fixture. Tests
+    using this fixture will modify the directory.
+
+    The __del__ method is called at the end of the module to close any open h5
+    files.
+
+    Yields
+    ------
+    ImageMosaic
+        An ImageMosaic object for testing.
+    """
+    os.remove(naive_bdv_directory / "test_data_bdv_tile_config.txt")
+    image_mosaic = ImageMosaic(naive_bdv_directory)
+
+    yield image_mosaic
+
+    # Explicit call to close open h5 files
+    image_mosaic.__del__()
 
 
 @pytest.fixture
@@ -183,6 +211,7 @@ def test_constants(imagej_path):
             [6, 7, 118],
             [5, 123, 116],
         ],
+        "EXPECTED_FUSED_SHAPE": (113, 251, 246),
         "CHANNELS": ["561 nm", "647 nm"],
         "PIXEL_SIZE_XY": 4.08,
         "PIXEL_SIZE_Z": 5.0,
@@ -198,6 +227,52 @@ def test_constants(imagej_path):
         "MOCK_XML_PATH": Path.home() / "stitching/Brain2/bdv.xml",
         "MOCK_TILE_CONFIG_PATH": Path.home()
         / "stitching/Brain2/bdv_tile_config.txt",
+        "DEFAULT_PYRAMID_DEPTH": 5,
+        "DEFAULT_DOWNSAMPLE_FACTORS": (1, 2, 2),
+        "DEFAULT_CHUNK_SHAPE": (128, 128, 128),
+        "DEFAULT_COMPRESSION_METHOD": "zstd",
+        "DEFAULT_COMPRESSION_LEVEL": 6,
     }
 
     return constants_dict
+
+
+@pytest.fixture(scope="module")
+def fused_image(image_mosaic, test_constants):
+    """
+    Fixture for creating a fused image for testing. The fused image is created
+    by iterating over the tiles in the image mosaic and placing them in
+    reverse order of acquisition. This is used as a ground truth for testing
+    the fusion functions.
+
+
+    Parameters
+    ----------
+    image_mosaic
+        ImageMosaic object loaded with test data.
+    test_constants
+        Dictionary containing constants for testing.
+
+    Returns
+    -------
+    np.ndarray
+        A 4D numpy array representing the fused image.
+    """
+    test_image = np.zeros(
+        (image_mosaic.num_channels, *test_constants["EXPECTED_FUSED_SHAPE"]),
+        dtype=np.int16,
+    )
+    z_size, y_size, x_size = test_constants["TILE_SIZE"]
+    tile_positions = test_constants["EXPECTED_TILE_POSITIONS"]
+
+    for tile, position in zip(
+        image_mosaic.tiles[-1::-1], tile_positions[-1::-1]
+    ):
+        test_image[
+            tile.channel_id,
+            tile.position[0] : position[0] + z_size,
+            tile.position[1] : position[1] + y_size,
+            tile.position[2] : position[2] + x_size,
+        ] = tile.data_pyramid[0].compute()
+
+    return test_image
