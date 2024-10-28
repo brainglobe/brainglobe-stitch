@@ -337,31 +337,31 @@ class ImageMosaic:
 
         Parameters
         ----------
-        fiji_path: Path
+        fiji_path : Path
             The path to the Fiji application.
-        resolution_level: int
+        resolution_level : int
             The resolution level to stitch the tiles at.
-        selected_channel: str
+        selected_channel : str
             The name of the channel to stitch.
-        min_r: float
+        min_r : float
             The minimum correlation coefficient for a link to be accepted.
             Default is 0.7.
-        max_r: float
+        max_r : float
             The maximum Pearson coefficient for a link to be accepted.
             Default is 1.0.
-        max_shift_x: float
+        max_shift_x : float
             The maximum shift in the x-dimension for a link to be accepted.
             Default is 100.0.
-        max_shift_y: float
+        max_shift_y : float
             The maximum shift in the y-dimension for a link to be accepted.
             Default is 100.0.
-        max_shift_z: float
+        max_shift_z : float
             The maximum shift in the z-dimension for a link to be accepted.
             Default is 100.0.
-        relative: float
+        relative : float
             The relative threshold for a link to be accepted.
             Default is 2.5.
-        absolute: float
+        absolute : float
             The absolute threshold for a link to be accepted.
             Default is 3.5.
         """
