@@ -268,7 +268,7 @@ def test_constants(imagej_path):
         / "stitching/Brain2/bdv_tile_config.txt",
         "DEFAULT_PYRAMID_DEPTH": 5,
         "DEFAULT_DOWNSAMPLE_FACTORS": (1, 2, 2),
-        "DEFAULT_CHUNK_SHAPE": (128, 128, 128),
+        "DEFAULT_CHUNK_SHAPE": (256, 256, 256),
         "DEFAULT_COMPRESSION_METHOD": "zstd",
         "DEFAULT_COMPRESSION_LEVEL": 6,
         "STITCH_RESOLUTION": 2,

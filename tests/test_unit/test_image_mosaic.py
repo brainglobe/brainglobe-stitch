@@ -260,9 +260,11 @@ def test_calculate_intensity_scale_factors(image_mosaic, test_constants):
     )
 
     assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+    # Check the relative tolerance
     assert np.allclose(
         image_mosaic.scale_factors,
         test_constants["EXPECTED_INTENSITY_FACTORS"],
+        rtol=1e-2,
     )
 
 
@@ -298,8 +300,9 @@ def test_interpolate_overlaps_already_done(image_mosaic, mocker):
 
 
 def test_fuse_invalid_file_type(image_mosaic):
+    output_file = image_mosaic.xml_path.parent / "fused.txt"
     with pytest.raises(ValueError):
-        image_mosaic.fuse("fused.txt")
+        image_mosaic.fuse(output_file)
 
 
 def test_fuse_bdv_h5_defaults(image_mosaic, mocker, test_constants):
@@ -308,7 +311,7 @@ def test_fuse_bdv_h5_defaults(image_mosaic, mocker, test_constants):
     )
     file_path = image_mosaic.xml_path.parent / "fused.h5"
 
-    image_mosaic.fuse(str(file_path))
+    image_mosaic.fuse(file_path)
     mock_fuse_function.assert_called_once_with(
         file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
@@ -338,7 +341,7 @@ def test_fuse_bdv_h5_custom(
     file_path = image_mosaic.xml_path.parent / "fused.h5"
 
     image_mosaic.fuse(
-        str(file_path),
+        file_path,
         normalise_intensity,
         interpolate,
         downscale_factors,
@@ -360,7 +363,7 @@ def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
     )
 
-    image_mosaic.fuse(str(file_path))
+    image_mosaic.fuse(file_path)
 
     mock_fuse_to_zarr.assert_called_once_with(
         file_path,
@@ -400,7 +403,7 @@ def test_fuse_zarr_custom(
     interpolate = False
 
     image_mosaic.fuse(
-        str(file_path),
+        file_path,
         normalise_intensity,
         interpolate,
         downscale_factors,

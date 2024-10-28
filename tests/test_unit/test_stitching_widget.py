@@ -492,7 +492,7 @@ def test_on_fuse_button_clicked(
 
     mock_fuse.assert_called_once_with(
         stitching_widget.image_mosaic,
-        str(file_path),
+        file_path,
         normalise_intensity=normalise_intensity,
         interpolate=interpolate,
     )
@@ -533,7 +533,7 @@ def test_on_fuse_button_clicked_wrong_suffix(
 ):
     stitching_widget = stitching_widget_with_mosaic
 
-    output_path = stitching_widget.working_directory / "fused_image.tif"
+    output_path = stitching_widget.working_directory / "fused_image.txt"
     stitching_widget.select_output_path_text_field.setText(str(output_path))
     error_message = "Output file name should end with .zarr, .h5"
 
