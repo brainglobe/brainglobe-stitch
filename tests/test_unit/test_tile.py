@@ -182,16 +182,15 @@ def test_extract_tile_overlaps(generate_overlap):
         ).all()
 
 
-def test_replace_overlap_data(generate_overlap):
+@pytest.mark.parametrize("res_level", [0, 1, 2])
+def test_replace_overlap_data(generate_overlap, res_level):
     """
     Test that the overlap data is replaced with zeros at the base
     resolution level.
     """
     overlap = generate_overlap
-
-    new_data = da.zeros(overlap.size[0], dtype=np.int16)
-    overlap.replace_overlap_data(0, new_data)
-    res_level = 0
+    new_data = da.zeros(overlap.size[res_level], dtype=np.int16)
+    overlap.replace_overlap_data(res_level, new_data)
 
     # Check that the overlap data has been replaced with zeros
     for i in range(len(overlap.tiles)):
