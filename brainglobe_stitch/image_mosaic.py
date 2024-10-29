@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import tifffile
 import zarr
+from dask.diagnostics import ProgressBar
 from numcodecs import Blosc
 from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.writer import write_multiscales_metadata
@@ -91,6 +92,8 @@ class ImageMosaic:
         self.x_y_resolution: float = 4.0  # um per pixel
         self.z_resolution: float = 5.0  # um per pixel
         self.num_channels: int = 1
+        self.dask_progress_bar = ProgressBar(minimum=1.0)
+        self.dask_progress_bar.register()
 
         self.load_mesospim_directory()
 
@@ -736,17 +739,18 @@ class ImageMosaic:
                 slice(tile.position[1], tile.position[1] + y_size),
                 slice(tile.position[2], tile.position[2] + x_size),
             )
+            print(f"Writing tile {tile.id}")
             tile.data_pyramid[0][da.newaxis, :].to_zarr(
                 fused_image_store, region=position
             )
 
-            print(f"Done tile {tile.id}")
-
+        print("Writing resolution pyramid")
         for i in range(1, len(transformation_metadata)):
             prev_resolution = da.from_zarr(
                 root[str(i - 1)], chunks=chunk_shape
             )
 
+            print(f"Writing resolution {i}")
             factors = (1, *downscale_factors)
             downsampled_image = downscale_nearest(prev_resolution, factors)
             downsampled_shape = downsampled_image.shape
@@ -758,8 +762,6 @@ class ImageMosaic:
                 compressor=compressor,
             )
             downsampled_image.to_zarr(downsampled_store)
-
-            print(f"Done resolution {i}")
 
         # Create the datasets containing the correct scaling transforms
         datasets = []
@@ -914,14 +916,13 @@ class ImageMosaic:
                     tile.channel_id
                 ][i - 1][steps]
 
-            print(f"Done tile {tile.id}")
-
         for i in range(len(da_list)):
             write_dict = {
                 f"t00000/s{i:02}/{j}/cells": da_list[i][j]
                 for j in range(pyramid_depth)
             }
 
+            print(f"Writing channel {i}")
             da.to_hdf5(output_path, write_dict)
 
         assert self.xml_path is not None

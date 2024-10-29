@@ -448,12 +448,21 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        self.image_mosaic.stitch(
+        worker = create_worker(
+            self.image_mosaic.stitch,
             self.imagej_path,
             resolution_level=2,
             selected_channel=self.fuse_channel_dropdown.currentText(),
         )
 
+        self.fuse_button.setEnabled(False)
+        self.stitch_button.setEnabled(False)
+        self.adjust_intensity_button.setEnabled(False)
+        self.interpolate_button.setEnabled(False)
+        worker.finished.connect(self._on_stitch_finished)
+        worker.start()
+
+    def _on_stitch_finished(self):
         show_info("Stitching complete")
 
         napari_data = self.image_mosaic.data_for_napari(
@@ -462,6 +471,9 @@ class StitchingWidget(QWidget):
 
         self.update_tiles_from_mosaic(napari_data)
         self.fuse_button.setEnabled(True)
+        self.stitch_button.setEnabled(True)
+        self.adjust_intensity_button.setEnabled(True)
+        self.interpolate_button.setEnabled(True)
 
     def _on_adjust_intensity_button_clicked(self):
         self.image_mosaic.normalise_intensity(
