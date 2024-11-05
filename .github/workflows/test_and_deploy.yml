@@ -64,13 +64,12 @@ jobs:
     name: Notify slack on scheduled failure
     runs-on: ubuntu-latest
     needs: [test]
-#    if: github.event_name == 'schedule'
     steps:
       - uses: ravsamhq/notify-slack-action@v2
-        if: ${{ github.event_name != 'schedule' }}
+        if: ${{ github.event_name == 'schedule' }}
         with:
           status: ${{ job.status }} # required
-          notify_when: 'success,failure,cancelled'
+          notify_when: 'failure'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_NOTIFYBOT_WEBHOOK_URL }} # required
 

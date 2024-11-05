@@ -27,3 +27,7 @@ def test_tile_init():
     assert tile.channel_name == ""
     assert tile.illumination_id == illumination_id
     assert tile.angle == angle
+
+
+def test_always_fail():
+    assert False
