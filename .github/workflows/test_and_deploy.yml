@@ -67,7 +67,7 @@ jobs:
 #    if: github.event_name == 'schedule'
     steps:
       - uses: ravsamhq/notify-slack-action@v2
-        if: ${{ github.event_name == 'schedule' }}
+        if: ${{ github.event_name != 'schedule' }}
         with:
           status: ${{ job.status }} # required
           notify_when: 'success,failure,cancelled'
