@@ -60,6 +60,23 @@ jobs:
           python-version: ${{ matrix.python-version }}
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
+  on-failure:
+    name: Notify slack on scheduled failure
+    needs: [test]
+#    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+        - uses: ravsamhq/notify-slack-action@v2
+          if: always()
+          with:
+            status: ${{ github.event.workflow_run.conclusion }}
+            notification_title: " ${{github.event.workflow_run.name}} - ${{github.event.workflow_run.conclusion}} on ${{github.event.workflow_run.head_branch}} - <${{github.server_url}}/${{github.repository}}/actions/runs/${{github.event.workflow_run.id}}|View Failure>"
+            message_format: ":fire: *${{github.event.workflow_run.name}}* ${{github.event.workflow_run.conclusion}} in <${{github.server_url}}/${{github.repository}}/${{github.event.workflow_run.head_branch}}|${{github.repository}}>"
+            footer: "Linked Repo <${{github.server_url}}/${{github.repository}}|${{github.repository}}> | <${{github.server_url}}/${{github.repository}}/actions/runs/${{github.event.workflow_run.id}}|View Failure>"
+#            notify_when: "failure"
+          env:
+            SLACK_WEBHOOK_URL: ${{ secrets.SLACK_NOTIFYBOT_WEBHOOK_URL }}
+
   build_sdist_wheels:
     name: Build source distribution
     needs: [test]
