@@ -8,7 +8,7 @@ on:
       - '*'
   schedule:
   # Runs at 6:10am UTC on Monday
-    - cron: '0/10 * * * *'
+    - cron: '0/15 * * * *'
   pull_request:
 
 jobs:
