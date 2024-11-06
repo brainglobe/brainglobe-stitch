@@ -61,14 +61,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
-  on-failure:
-    name: Notify slack on scheduled failure
-    needs: [test]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: ravsamhq/notify-slack-action@v2
-        if: ${{ github.event_name == 'schedule' }}
+      - name: Notify slack on scheduled failure
+        if: always() && ${{ github.even_name == 'schedule' }}
+        uses: ravsamhq/notify-slack-action@v2
         with:
           status: ${{ job.status }} # required
           notify_when: 'failure'
