@@ -28,6 +28,7 @@ jobs:
     name: ${{ matrix.os }} py${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         # Run all supported Python versions on linux
         python-version: ["3.10", "3.11", "3.12"]
@@ -62,6 +63,7 @@ jobs:
 
   on-failure:
     name: Notify slack on scheduled failure
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: ravsamhq/notify-slack-action@v2
