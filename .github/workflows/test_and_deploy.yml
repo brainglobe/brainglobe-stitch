@@ -8,7 +8,7 @@ on:
       - '*'
   schedule:
   # Runs at 6:10am UTC on Monday
-    - cron: '10 6 * * 1'
+    - cron: '0/10 * * * 1'
   pull_request:
 
 jobs:
@@ -61,11 +61,10 @@ jobs:
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Notify slack on scheduled failure
-        if: always()
+        if: github.even_name == 'schedule'
         uses: ravsamhq/notify-slack-action@v2
         with:
           status: ${{ job.status }} # required
-          notify_when: 'failure'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_NOTIFYBOT_WEBHOOK_URL }} # required
 
