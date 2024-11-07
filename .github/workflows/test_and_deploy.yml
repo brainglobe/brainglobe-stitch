@@ -72,7 +72,7 @@ jobs:
       - name: Echo variables
         if: always()
         run: |
-          echo "toJson(github)"
+          echo "${{ toJson(github) }}"
           echo "${{ github.event_name }}"
 
 
