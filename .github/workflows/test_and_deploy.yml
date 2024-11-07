@@ -72,7 +72,7 @@ jobs:
         run: |
           echo "toJson(github)"
           echo "${{ github.event_name }}"
-          
+
 
   build_sdist_wheels:
     name: Build source distribution
