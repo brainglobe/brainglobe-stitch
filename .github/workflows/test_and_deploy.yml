@@ -61,7 +61,7 @@ jobs:
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Notify slack on scheduled failure
-        if: github.even_name == 'schedule'
+        if: always() && github.even_name == 'schedule'
         uses: ravsamhq/notify-slack-action@v2
         with:
           status: ${{ job.status }} # required
