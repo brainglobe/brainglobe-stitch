@@ -46,6 +46,7 @@ def test_create_pyramid_bdv_h5(
     """
     # Sanity check to ensure that the test h5 file doesn't contain any
     # resolutions or subdivisions, and no resolution pyramid.
+    assert False
     h5_path = naive_bdv_directory / "test_data_bdv.h5"
     with h5py.File(h5_path, "r") as f:
         num_tiles = len(f["t00000"].keys())
