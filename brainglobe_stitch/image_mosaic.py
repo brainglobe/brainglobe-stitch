@@ -1015,6 +1015,7 @@ class ImageMosaic:
                         adjusted_start:adjusted_end
                     ].compute()
 
+                print(f"Writing planes {j} to {j+max_num_planes}")
                 for plane in fused_image_buffer[:max_num_planes]:
                     tiff_writers[i].write(
                         plane[np.newaxis, ...],

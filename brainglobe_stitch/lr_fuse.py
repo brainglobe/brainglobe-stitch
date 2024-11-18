@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Dict, List, Tuple
 
 import dask.array as da
@@ -6,7 +5,6 @@ import numpy as np
 import numpy.typing as npt
 import SimpleITK as sitk
 from dask_image.ndinterp import affine_transform as da_affine_transform
-from distributed import LocalCluster
 
 from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.tile import Tile
@@ -181,11 +179,11 @@ def blend_along_axis(
     mask1_slices[axis] = slice(None, mask1_index)
 
     # Assume log is symmetric around center
-    mask2_index = im2.shape[0] - mask1_index
+    mask2_index = im2.shape[axis] - mask1_index
     mask2_slices = [slice(None)] * len(shape)
     mask2_slices[axis] = slice(mask2_index, None)
     maskb_slices = [slice(None)] * len(shape)
-    maskb_slices[axis] = slice(mask2_index, mask1_index)
+    maskb_slices[axis] = slice(mask1_index, mask2_index)
 
     mask1 = tuple(mask1_slices)
     mask2 = tuple(mask2_slices)
@@ -265,20 +263,3 @@ def l_r_fuse(
         image_mosaic.tile_names.remove(right_tile.name)
 
     return image_mosaic
-
-
-if __name__ == "__main__":
-    cluster = LocalCluster(n_workers=8)
-    client = cluster.get_client()
-
-    fused_file_name = "fused.zarr"
-    working_dir = Path("/mnt/Data/Phillip/")
-    output_path = working_dir / fused_file_name
-    image_mosaic_in = ImageMosaic(working_dir)
-
-    fused_mosaic = l_r_fuse(image_mosaic_in)
-
-    fused_mosaic.fuse(output_path)
-
-    client.close()
-    cluster.close()
