@@ -92,7 +92,7 @@ class ImageMosaic:
         self.x_y_resolution: float = 4.0  # um per pixel
         self.z_resolution: float = 5.0  # um per pixel
         self.num_channels: int = 1
-        self.dask_progress_bar = ProgressBar(minimum=1.0)
+        self.dask_progress_bar = ProgressBar(minimum=4.0)
         self.dask_progress_bar.register()
 
         self.load_mesospim_directory()
@@ -827,7 +827,7 @@ class ImageMosaic:
         # Metadata is in x, y, z order for Big Data Viewer
         downscale_factors_array = np.array(downscale_factors, dtype=np.int16)
         resolutions = np.ones((pyramid_depth, 3), dtype=np.int16)
-
+        dtype_out = self.tiles[0].data_pyramid[0].dtype
         for i in range(1, pyramid_depth):
             resolutions[i, :] = downscale_factors_array[-1::-1] ** i
 
@@ -838,12 +838,12 @@ class ImageMosaic:
             output_file.require_dataset(
                 f"s{i:02}/resolutions",
                 data=resolutions,
-                dtype="i2",
+                dtype=dtype_out,
                 shape=resolutions.shape,
             )
             output_file.create_dataset(
                 f"s{i:02}/subdivisions",
-                dtype="i2",
+                dtype=dtype_out,
                 shape=resolutions.shape,
             )
 
@@ -853,7 +853,7 @@ class ImageMosaic:
             # Create the dask arrays for each resolution level
             sub_list: List[da.Array] = [
                 da.zeros(
-                    fused_image_shape, dtype="i2", chunks=temp_chunk_shape
+                    fused_image_shape, dtype=dtype_out, chunks=temp_chunk_shape
                 )
             ]
 
@@ -871,7 +871,9 @@ class ImageMosaic:
                     temp_chunk_shape = new_shape
 
                 sub_list.append(
-                    da.zeros(new_shape, dtype="i2", chunks=temp_chunk_shape)
+                    da.zeros(
+                        new_shape, dtype=dtype_out, chunks=temp_chunk_shape
+                    )
                 )
 
                 # Set the chunk shape for the other resolution levels
@@ -948,7 +950,7 @@ class ImageMosaic:
             The shape of the fused image.
         """
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
-        batch_size = 16
+        batch_size = 64
 
         batched_image_shape = (batch_size, *fused_image_shape[1:])
         tiff_writers = []
@@ -959,15 +961,22 @@ class ImageMosaic:
                     f"{output_path.stem}_{self.channel_names[i]}"
                 )
                 tiff_writers.append(
-                    tifffile.TiffWriter(curr_channel_path, imagej=True)
+                    tifffile.TiffWriter(
+                        curr_channel_path, imagej=True, append=True
+                    )
                 )
         else:
-            tiff_writers.append(tifffile.TiffWriter(output_path, imagej=True))
+            tiff_writers.append(
+                tifffile.TiffWriter(output_path, imagej=True, append=True)
+            )
 
         # First set of planes will not always write batch_number of planes as
         # there's a z-shift for each tile
         for i in range(self.num_channels - 1, -1, -1):
-            fused_image_buffer = np.zeros(batched_image_shape, dtype=np.int16)
+            fused_image_buffer = np.zeros(
+                batched_image_shape, dtype=self.tiles[0].data_pyramid[0].dtype
+            )
+            print(f"Writing planes {0} to {batch_size}")
             for tile in self.tiles[-1::-1]:
                 # Place the tiles in reverse order of acquisition
                 # For the current channel
@@ -985,6 +994,7 @@ class ImageMosaic:
             for plane in fused_image_buffer:
                 tiff_writers[i].write(
                     plane[np.newaxis, ...],
+                    dtype=plane.dtype,
                     contiguous=True,
                     resolution=(self.x_y_resolution, self.x_y_resolution),
                     metadata={"spacing": self.z_resolution, "unit": "um"},
@@ -993,7 +1003,8 @@ class ImageMosaic:
             for j in range(batch_size, fused_image_shape[0], batch_size):
                 # Place the tiles in reverse order of acquisition
                 fused_image_buffer = np.zeros(
-                    batched_image_shape, dtype=np.int16
+                    batched_image_shape,
+                    dtype=self.tiles[0].data_pyramid[0].dtype,
                 )
                 max_num_planes = 0
                 for tile in self.tiles[-1::-1]:
@@ -1019,6 +1030,7 @@ class ImageMosaic:
                 for plane in fused_image_buffer[:max_num_planes]:
                     tiff_writers[i].write(
                         plane[np.newaxis, ...],
+                        dtype=plane.dtype,
                         contiguous=True,
                         resolution=(self.x_y_resolution, self.x_y_resolution),
                         metadata={"spacing": self.z_resolution, "unit": "um"},
@@ -1057,7 +1069,9 @@ class ImageMosaic:
         # First set of planes will not always write batch_number of planes as
         # there's a z-shift for each tile
         for i in range(self.num_channels - 1, -1, -1):
-            fused_image_buffer = np.zeros(batched_image_shape, dtype=np.int16)
+            fused_image_buffer = np.zeros(
+                batched_image_shape, dtype=self.tiles[0].data_pyramid[0].dtype
+            )
             for tile in self.tiles[-1::-1]:
                 # Place the tiles in reverse order of acquisition
                 # For the current channel
@@ -1083,7 +1097,8 @@ class ImageMosaic:
             for j in range(batch_size, fused_image_shape[0], batch_size):
                 # Place the tiles in reverse order of acquisition
                 fused_image_buffer = np.zeros(
-                    batched_image_shape, dtype=np.int16
+                    batched_image_shape,
+                    dtype=self.tiles[0].data_pyramid[0].dtype,
                 )
                 max_num_planes = 0
                 for tile in self.tiles[-1::-1]:
