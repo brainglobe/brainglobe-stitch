@@ -376,15 +376,15 @@ def test_on_stitch_button_clicked(
     stitching_widget = stitching_widget_with_mosaic
     stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
-    mock_stitch_function = mocker.patch(
-        "brainglobe_stitch.stitching_widget.ImageMosaic.stitch",
+    mock_create_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.create_worker",
         autospec=True,
     )
 
     stitching_widget._on_stitch_button_clicked()
 
-    mock_stitch_function.assert_called_once_with(
-        stitching_widget.image_mosaic,
+    mock_create_worker.assert_called_once_with(
+        stitching_widget.image_mosaic.stitch,
         stitching_widget.imagej_path,
         resolution_level=2,
         selected_channel="",
