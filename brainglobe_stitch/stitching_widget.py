@@ -439,7 +439,7 @@ class StitchingWidget(QWidget):
         Check if the selected ImageJ path is valid. If valid, enable the
         stitch button. Otherwise, show a warning.
         """
-        if self.imagej_path and self.imagej_path.is_file():
+        if self.imagej_path and self.imagej_path.exists():
             self.stitch_button.setEnabled(True)
         else:
             error_message = (
