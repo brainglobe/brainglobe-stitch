@@ -97,9 +97,14 @@ class Overlap:
         tile_j: Tile
             The second tile.
         """
+        # Store the starting coordinates for the overlap in the fused image
         self.coordinates: npt.NDArray = overlap_coordinates
+        # Store the size of overlap for each level of the resolution pyramid
         self.size: List[npt.NDArray] = [overlap_size]
         self.tiles: Tuple[Tile, Tile] = (tile_i, tile_j)
+        # Store the starting coordinates for the overlap for each level of the
+        # resolution pyramid. The tuple contains the starting coordinates for
+        # the overlap in each tile.
         self.local_coordinates: List[Tuple[npt.NDArray, npt.NDArray]] = [
             (
                 np.zeros(self.coordinates.shape),
@@ -116,26 +121,33 @@ class Overlap:
         tile_shape = self.tiles[0].data_pyramid[0].shape
         resolution_pyramid = self.tiles[0].resolution_pyramid
 
-        for i in range(self.coordinates.shape[0]):
-            if self.tiles[0].position[i] < self.tiles[1].position[i]:
-                self.local_coordinates[0][0][i] = (
-                    tile_shape[i] - self.size[0][i]
+        for dim_index in range(self.coordinates.shape[0]):
+            if (
+                self.tiles[0].position[dim_index]
+                < self.tiles[1].position[dim_index]
+            ):
+                self.local_coordinates[0][0][dim_index] = (
+                    tile_shape[dim_index] - self.size[0][dim_index]
                 )
-                self.local_coordinates[0][1][i] = 0
+                self.local_coordinates[0][1][dim_index] = 0
             else:
-                self.local_coordinates[0][0][i] = 0
-                self.local_coordinates[0][1][i] = (
-                    tile_shape[i] - self.size[0][i]
+                self.local_coordinates[0][0][dim_index] = 0
+                self.local_coordinates[0][1][dim_index] = (
+                    tile_shape[dim_index] - self.size[0][dim_index]
                 )
 
-        for j in range(1, len(resolution_pyramid)):
+        for resolution_level in range(1, len(resolution_pyramid)):
             self.local_coordinates.append(
                 (
-                    self.local_coordinates[0][0] // resolution_pyramid[j],
-                    self.local_coordinates[0][1] // resolution_pyramid[j],
+                    self.local_coordinates[0][0]
+                    // resolution_pyramid[resolution_level],
+                    self.local_coordinates[0][1]
+                    // resolution_pyramid[resolution_level],
                 )
             )
-            self.size.append(self.size[0] // resolution_pyramid[j])
+            self.size.append(
+                self.size[0] // resolution_pyramid[resolution_level]
+            )
 
     def extract_tile_overlaps(
         self, resolution_level: int
