@@ -701,7 +701,7 @@ class ImageMosaic:
         output_path: Path,
         fused_image_shape: Tuple[int, int, int],
         downscale_factors: Tuple[int, int, int],
-        pyramid_depth,
+        pyramid_depth: int,
         chunk_shape: Tuple[int, int, int],
     ) -> None:
         """
