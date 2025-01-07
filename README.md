@@ -31,8 +31,7 @@ We are always happy to help users of our tools, and welcome any contributions. I
 ## Citation
 If you find this package useful, please cite it in your work:
 
->Igor Tatarnikov, Alessandro Felder, & Adam Tyson. (2024). brainglobe/brainglobe-stitch, Zenodo. [https://doi.org/10.5281/zenodo.14186834](https://doi.org/10.5281/zenodo.14001001)
-
+>Igor Tatarnikov, Alessandro Felder, & Adam Tyson. (2024). brainglobe/brainglobe-stitch, Zenodo. https://doi.org/10.5281/zenodo.14001001
 
 Please also cite the original BigStitcher publication:
 > Hörl, D., Rojas Rusak, F., Preusser, F. *et al.* BigStitcher: reconstructing high-resolution image datasets of cleared and expanded samples. Nat Methods 16, 870–874 (2019). https://doi.org/10.1038/s41592-019-0501-0
