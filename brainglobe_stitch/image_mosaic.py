@@ -80,6 +80,11 @@ class ImageMosaic:
 
         self.load_mesospim_directory()
 
+        self.scale_factors: Optional[npt.NDArray] = None
+        self.intensity_adjusted: List[bool] = [False] * len(
+            self.tiles[0].resolution_pyramid
+        )
+
     def __del__(self):
         if self.h5_file:
             self.h5_file.close()
@@ -355,6 +360,25 @@ class ImageMosaic:
             stitched_position = stitched_translations[tile.id]
             tile.position = stitched_position
 
+    def reload_resolution_pyramid_level(self, resolution_level: int) -> None:
+        """
+        Reload the data for a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to reload the data for.
+        """
+        if self.h5_file:
+            for tile in self.tiles:
+                tile.data_pyramid[resolution_level] = da.from_array(
+                    self.h5_file[
+                        f"t00000/{tile.name}/{resolution_level}/cells"
+                    ]
+                )
+
+            self.intensity_adjusted[resolution_level] = False
+
     def calculate_overlaps(self) -> None:
         """
         Calculate the overlaps between the tiles in the ImageMosaic.
@@ -397,9 +421,97 @@ class ImageMosaic:
                     )
                     tile_i.neighbours.append(tile_j.id)
 
+    def normalise_intensity(
+        self, resolution_level: int = 0, percentile: int = 80
+    ) -> None:
+        """
+        Normalise the intensity of the image at a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to normalise the intensity at.
+        percentile: int
+            The percentile based on which the normalisation is done.
+        """
+        if self.intensity_adjusted[resolution_level]:
+            print("Intensity already adjusted at this resolution scale.")
+            return
+
+        if self.scale_factors is None:
+            # Calculate scale factors on at least resolution level 2
+            # The tiles are adjusted as the scale factors are calculated
+            self.calculate_intensity_scale_factors(
+                max(resolution_level, 2), percentile
+            )
+
+            if self.intensity_adjusted[resolution_level]:
+                return
+
+        assert self.scale_factors is not None
+
+        # Adjust the intensity of each tile based on the scale factors
+        for tile in self.tiles:
+            if self.scale_factors[tile.id] != 1.0:
+                tile.data_pyramid[resolution_level] = da.multiply(
+                    tile.data_pyramid[resolution_level],
+                    self.scale_factors[tile.id],
+                ).astype(tile.data_pyramid[resolution_level].dtype)
+
+        self.intensity_adjusted[resolution_level] = True
+
+    def calculate_intensity_scale_factors(
+        self, resolution_level: int, percentile: int
+    ):
+        """
+        Calculate the scale factors for normalising the intensity of the image.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to calculate the scale factors at.
+        percentile: int
+            The percentile based on which the normalisation is done.
+        """
+        num_tiles = len(self.tiles)
+        scale_factors = np.ones((num_tiles, num_tiles))
+
+        for tile_i in self.tiles:
+            # Iterate through the neighbours of each tile
+            print(f"Calculating scale factors for tile {tile_i.id}")
+            for neighbour_id in tile_i.neighbours:
+                tile_j = self.tiles[neighbour_id]
+                overlap = self.overlaps[(tile_i.id, tile_j.id)]
+
+                # Extract the overlapping data from both tiles
+                i_overlap, j_overlap = overlap.extract_tile_overlaps(
+                    resolution_level
+                )
+
+                # Calculate the percentile intensity of the overlapping data
+                median_i = da.percentile(i_overlap.ravel(), percentile)
+                median_j = da.percentile(j_overlap.ravel(), percentile)
+
+                curr_scale_factor = (median_i / median_j).compute()
+                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor[0]
+
+                # Adjust the tile intensity based on the scale factor
+                tile_j.data_pyramid[resolution_level] = da.multiply(
+                    tile_j.data_pyramid[resolution_level],
+                    curr_scale_factor,
+                ).astype(tile_j.data_pyramid[resolution_level].dtype)
+
+        self.intensity_adjusted[resolution_level] = True
+        # Calculate the product of the scale factors for each tile's neighbours
+        # The product is the final scale factor for that tile
+        self.scale_factors = np.prod(scale_factors, axis=0)
+
+        return
+
     def fuse(
         self,
         output_file_name: str,
+        normalise_intensity: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
         chunk_shape: Tuple[int, int, int] = (128, 128, 128),
         pyramid_depth: int = 5,
@@ -413,7 +525,9 @@ class ImageMosaic:
         ----------
         output_file_name: str
             The name of the output file, suffix dictates the output file type.
-            Accepts .zarr and .h5 extensions.
+            Accepts .zarr and .h5 extensions.#
+        normalise_intensity: bool, default: False
+            Normalise the intensity differences between tiles.
         downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
             The factors to downscale the image by in the z, y, x dimensions.
         chunk_shape: Tuple[int, ...], default: (128, 128, 128)
@@ -434,6 +548,9 @@ class ImageMosaic:
             max([tile.position[1] for tile in self.tiles]) + y_size,
             max([tile.position[2] for tile in self.tiles]) + x_size,
         )
+
+        if normalise_intensity:
+            self.normalise_intensity(0, 80)
 
         if output_path.suffix == ".zarr":
             self._fuse_to_zarr(
