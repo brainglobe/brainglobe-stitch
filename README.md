@@ -29,7 +29,11 @@ The BigStitcher plugin must be installed in Fiji. Please follow the instructions
 We are always happy to help users of our tools, and welcome any contributions. If you would like to get in contact with us for any reason, please see the [contact page of our website](https://brainglobe.info/contact.html).
 
 ## Citation
-If you find this package useful, please make sure to cite the original BigStitcher publication:
+If you find this package useful, please cite it in your work:
+
+>Igor Tatarnikov, Alessandro Felder, & Adam Tyson. (2024). brainglobe/brainglobe-stitch, Zenodo. https://doi.org/10.5281/zenodo.14001001
+
+Please also cite the original BigStitcher publication:
 > Hörl, D., Rojas Rusak, F., Preusser, F. *et al.* BigStitcher: reconstructing high-resolution image datasets of cleared and expanded samples. Nat Methods 16, 870–874 (2019). https://doi.org/10.1038/s41592-019-0501-0
 
 
