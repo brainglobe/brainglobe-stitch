@@ -510,7 +510,7 @@ class ImageMosaic:
 
     def fuse(
         self,
-        output_file_name: str,
+        output_path: Path,
         normalise_intensity: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
         chunk_shape: Tuple[int, int, int] = (128, 128, 128),
@@ -523,7 +523,7 @@ class ImageMosaic:
 
         Parameters
         ----------
-        output_file_name: str
+        output_path: Path
             The name of the output file, suffix dictates the output file type.
             Accepts .zarr and .h5 extensions.#
         normalise_intensity: bool, default: False
@@ -539,8 +539,6 @@ class ImageMosaic:
         compression_level: int, default: 6
             The compression level to use (only used for zarr).
         """
-        output_path = self.directory / output_file_name
-
         z_size, y_size, x_size = self.tiles[0].data_pyramid[0].shape
         # Calculate the shape of the fused image
         fused_image_shape: Tuple[int, int, int] = (

@@ -14,6 +14,7 @@ from napari import Viewer
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_info, show_warning
 from qtpy.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -22,9 +23,11 @@ from qtpy.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
+from superqt import QCollapsible
 
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
@@ -208,12 +211,67 @@ class StitchingWidget(QWidget):
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
 
-        self.fuse_option_widget = QWidget()
-        self.fuse_option_widget.setLayout(QFormLayout())
-        self.output_file_name_field = QLineEdit()
-        self.fuse_option_widget.layout().addRow(
-            "Output file name:", self.output_file_name_field
+        self.adjust_intensity_button = QPushButton("Adjust Intensity")
+        self.adjust_intensity_button.clicked.connect(
+            self._on_adjust_intensity_button_clicked
         )
+        self.adjust_intensity_button.setEnabled(False)
+        self.layout().addWidget(self.adjust_intensity_button)
+
+        self.adjust_intensity_collapsible = QCollapsible(
+            "Intensity Adjustment Options"
+        )
+        self.adjust_intensity_menu = QWidget()
+        self.adjust_intensity_menu.setLayout(
+            QFormLayout(parent=self.adjust_intensity_menu)
+        )
+
+        self.percentile_field = QSpinBox(parent=self.adjust_intensity_menu)
+        self.percentile_field.setRange(0, 100)
+        self.percentile_field.setValue(80)
+        self.adjust_intensity_menu.layout().addRow(
+            "Percentile", self.percentile_field
+        )
+
+        self.adjust_intensity_collapsible.setContent(
+            self.adjust_intensity_menu
+        )
+
+        self.layout().addWidget(self.adjust_intensity_collapsible)
+        self.adjust_intensity_collapsible.collapse(animate=False)
+
+        self.fuse_option_widget = QWidget(parent=self)
+        self.fuse_option_widget.setLayout(
+            QFormLayout(parent=self.fuse_option_widget)
+        )
+        self.normalise_intensity_toggle = QCheckBox()
+
+        self.select_output_path = QWidget()
+        self.select_output_path.setLayout(QHBoxLayout())
+
+        self.select_output_path_text_field = QLineEdit()
+        self.select_output_path_text_field.setText(str(self.working_directory))
+        self.select_output_path.layout().addWidget(
+            self.select_output_path_text_field
+        )
+
+        self.open_file_dialog_output = QPushButton("Browse")
+        self.open_file_dialog_output.clicked.connect(
+            self._on_open_file_dialog_output_clicked
+        )
+        self.select_output_path.layout().addWidget(
+            self.open_file_dialog_output
+        )
+
+        self.fuse_option_widget.layout().addWidget(self.select_output_path)
+
+        self.fuse_option_widget.layout().addRow(
+            "Normalise intensity:", self.normalise_intensity_toggle
+        )
+        self.fuse_option_widget.layout().addRow(QLabel("Output file name:"))
+        self.fuse_option_widget.layout().addRow(self.select_output_path)
+
+        self.layout().addWidget(self.fuse_option_widget)
 
         self.layout().addWidget(self.fuse_option_widget)
 
@@ -294,6 +352,7 @@ class StitchingWidget(QWidget):
         )
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
+        self.adjust_intensity_button.setEnabled(True)
 
     def _set_tile_layers(self, tile_layer: napari.layers.Image) -> None:
         """
@@ -370,12 +429,20 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        self.image_mosaic.stitch(
+        worker = create_worker(
+            self.image_mosaic.stitch,
             self.imagej_path,
             resolution_level=2,
             selected_channel=self.fuse_channel_dropdown.currentText(),
         )
 
+        self.fuse_button.setEnabled(False)
+        self.stitch_button.setEnabled(False)
+        self.adjust_intensity_button.setEnabled(False)
+        worker.finished.connect(self._on_stitch_finished)
+        worker.start()
+
+    def _on_stitch_finished(self):
         show_info("Stitching complete")
 
         napari_data = self.image_mosaic.data_for_napari(
@@ -384,9 +451,39 @@ class StitchingWidget(QWidget):
 
         self.update_tiles_from_mosaic(napari_data)
         self.fuse_button.setEnabled(True)
+        self.stitch_button.setEnabled(True)
+        self.adjust_intensity_button.setEnabled(True)
+
+    def _on_adjust_intensity_button_clicked(self):
+        self.image_mosaic.normalise_intensity(
+            resolution_level=self.resolution_to_display,
+            percentile=self.percentile_field.value(),
+        )
+
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
+
+        self.update_tiles_from_mosaic(data_for_napari)
+
+    def _on_open_file_dialog_output_clicked(self) -> None:
+        """
+        Open a file dialog to select the output file path.
+        """
+        output_file_str = QFileDialog.getSaveFileName(
+            self, "Select output file", str(self.working_directory)
+        )[0]
+        # A blank string is returned if the user cancels the dialog
+        if not output_file_str:
+            return
+
+        self.select_output_path_text_field.setText(output_file_str)
 
     def _on_fuse_button_clicked(self) -> None:
-        if not self.output_file_name_field.text():
+        if (
+            self.select_output_path_text_field.text()
+            == str(self.working_directory)
+        ) or (not self.select_output_path_text_field.text()):
             error_message = "Output file name not specified"
             show_warning(error_message)
             display_info(self, "Warning", error_message)
@@ -398,10 +495,10 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        path = self.working_directory / self.output_file_name_field.text()
+        output_path = Path(self.select_output_path_text_field.text())
         valid_extensions = [".zarr", ".h5"]
 
-        if path.suffix not in valid_extensions:
+        if output_path.suffix not in valid_extensions:
             error_message = (
                 f"Output file name should end with "
                 f"{', '.join(valid_extensions)}"
@@ -410,15 +507,16 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        if path.exists():
+        if output_path.exists():
             error_message = (
-                f"Output file {path} already exists. Replace existing file?"
+                f"Output file {output_path} already exists. "
+                f"Replace existing file?"
             )
             if display_warning(self, "Warning", error_message):
                 (
-                    shutil.rmtree(path)
-                    if path.suffix == ".zarr"
-                    else path.unlink()
+                    shutil.rmtree(output_path)
+                    if output_path.suffix == ".zarr"
+                    else output_path.unlink()
                 )
             else:
                 show_warning(
@@ -428,11 +526,12 @@ class StitchingWidget(QWidget):
                 return
 
         self.image_mosaic.fuse(
-            self.output_file_name_field.text(),
+            output_path,
+            normalise_intensity=self.normalise_intensity_toggle.isChecked(),
         )
 
         show_info("Fusing complete")
-        display_info(self, "Info", f"Fused image saved to {path}")
+        display_info(self, "Info", f"Fused image saved to {output_path}")
 
     def check_imagej_path(self) -> None:
         """
