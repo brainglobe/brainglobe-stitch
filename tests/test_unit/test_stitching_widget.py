@@ -376,15 +376,15 @@ def test_on_stitch_button_clicked(
     stitching_widget = stitching_widget_with_mosaic
     stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
-    mock_stitch_function = mocker.patch(
-        "brainglobe_stitch.stitching_widget.ImageMosaic.stitch",
+    mock_create_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.create_worker",
         autospec=True,
     )
 
     stitching_widget._on_stitch_button_clicked()
 
-    mock_stitch_function.assert_called_once_with(
-        stitching_widget.image_mosaic,
+    mock_create_worker.assert_called_once_with(
+        stitching_widget_with_mosaic.image_mosaic.stitch,
         stitching_widget.imagej_path,
         resolution_level=2,
         selected_channel="",
@@ -484,11 +484,14 @@ def test_on_fuse_button_clicked(
         autospec=True,
     )
 
-    stitching_widget.output_file_name_field.setText(file_name)
+    output_path = stitching_widget.working_directory / file_name
+    stitching_widget.select_output_path_text_field.setText(str(output_path))
 
     stitching_widget._on_fuse_button_clicked()
 
-    mock_fuse.assert_called_once_with(stitching_widget.image_mosaic, file_name)
+    mock_fuse.assert_called_once_with(
+        stitching_widget.image_mosaic, output_path, normalise_intensity=False
+    )
     mock_display_info.assert_called_once_with(
         stitching_widget,
         "Info",
@@ -527,7 +530,7 @@ def test_on_fuse_button_clicked_wrong_suffix(
 ):
     stitching_widget = stitching_widget_with_mosaic
 
-    stitching_widget.output_file_name_field.setText("fused_image.tif")
+    stitching_widget.select_output_path_text_field.setText("fused_image.tif")
     error_message = "Output file name should end with .zarr, .h5"
 
     mock_show_warning = mocker.patch(
