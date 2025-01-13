@@ -50,7 +50,7 @@ jobs:
             !~/.brainglobe/atlas.tar.gz
           key: brainglobe
       # these libraries enable testing on Qt on linux
-      - uses: pyvista/setup-headless-display-action@v2
+      - uses: pyvista/setup-headless-display-action@v3
         with:
           qt: true
 
