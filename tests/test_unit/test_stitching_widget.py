@@ -391,6 +391,30 @@ def test_on_stitch_button_clicked(
     )
 
 
+def test_on_stitch_button_clicked_no_imagej(
+    stitching_widget, test_constants, mocker
+):
+    """
+    Tests that the _on_stitch_button_clicked method correctly shows a warning
+    message to the user when the imageJ path is not set.
+    """
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning"
+    )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+    error_message = "Select the ImageJ path prior to stitching"
+
+    stitching_widget._on_stitch_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
+
+
 def test_check_imagej_path_valid(stitching_widget):
     """
     Creates a mock imageJ file in the home directory and sets it as the
