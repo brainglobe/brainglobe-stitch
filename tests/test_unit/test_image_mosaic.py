@@ -263,6 +263,31 @@ def test_fuse_bdv_h5_defaults(image_mosaic, mocker, test_constants):
     )
 
 
+def test_fuse_zarr_normalise_intensity(image_mosaic, mocker, test_constants):
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
+
+    mock_fuse_to_zarr = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
+    )
+    mock_normalise_intensity = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.normalise_intensity"
+    )
+
+    image_mosaic.normalise_intensity = mock_normalise_intensity
+    image_mosaic.fuse(file_path, normalise_intensity=True)
+
+    mock_normalise_intensity.assert_called_once_with(0, 80)
+    mock_fuse_to_zarr.assert_called_once_with(
+        file_path,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
+    )
+
+
 @pytest.mark.parametrize(
     "downscale_factors, chunk_shape, pyramid_depth",
     [((2, 2, 2), (64, 64, 64), 2), ((4, 4, 4), (32, 32, 32), 3)],
