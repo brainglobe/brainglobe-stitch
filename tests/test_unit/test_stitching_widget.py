@@ -439,6 +439,26 @@ def test_on_stitch_button_clicked_no_imagej(
     )
 
 
+def test_on_stitch_finished(stitching_widget_with_mosaic, mocker):
+    """
+    Tests that the _on_stitch_finished method correctly sets the image_mosaic
+    attribute of the StitchingWidget to None and enables the create_pyramid
+    button.
+    """
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info"
+    )
+    stitching_widget = stitching_widget_with_mosaic
+
+    stitching_widget._on_stitch_finished()
+
+    mock_show_info.assert_called_once_with("Stitching complete")
+
+    assert stitching_widget_with_mosaic.fuse_button.isEnabled()
+    assert stitching_widget_with_mosaic.stitch_button.isEnabled()
+    assert stitching_widget_with_mosaic.adjust_intensity_button.isEnabled()
+
+
 def test_check_imagej_path_valid(stitching_widget):
     """
     Creates a mock imageJ file in the home directory and sets it as the
