@@ -391,6 +391,30 @@ def test_on_stitch_button_clicked(
     )
 
 
+def test_on_stitch_button_clicked_no_image_mosaic(
+    stitching_widget, test_constants, mocker
+):
+    """
+    Tests that the _on_stitch_button_clicked method correctly shows a warning
+    message to the user when the ImageMosaic object is not set.
+    """
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning"
+    )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+    error_message = "Open a mesoSPIM directory prior to stitching"
+
+    stitching_widget._on_stitch_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
+
+
 def test_on_stitch_button_clicked_no_imagej(
     stitching_widget_with_mosaic, test_constants, mocker
 ):
