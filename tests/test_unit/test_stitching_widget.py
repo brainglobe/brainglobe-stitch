@@ -559,6 +559,42 @@ def test_update_tiles_from_mosaic(
         assert (tile.translate == test_data[1]).all()
 
 
+def test_on_open_dialog_output_clicked(stitching_widget, mocker):
+    """
+    Test that the on_open_dialog_output_clicked method.
+    The directory is provided by mocking the return of the
+    QFileDialog.getExistingDirectory method.
+    """
+    test_dir = str(Path.home() / "test_dir")
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getSaveFileName",
+        return_value=[test_dir],
+    )
+
+    stitching_widget._on_open_file_dialog_output_clicked()
+
+    assert stitching_widget.select_output_path_text_field.text() == test_dir
+
+
+def test_on_open_dialog_output_clicked_cancelled(stitching_widget, mocker):
+    """
+    Mocks the QFileDialog.getExistingDirectory method to return an empty string
+    to mimic the user cancelling the file dialog.
+    The select_output_path_text_field should retain its original value.
+    """
+    original_value = stitching_widget.select_output_path_text_field.text()
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getExistingDirectory",
+        return_value="",
+    )
+
+    stitching_widget._on_open_file_dialog_clicked()
+
+    assert (
+        stitching_widget.select_output_path_text_field.text() == original_value
+    )
+
+
 @pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
 def test_on_fuse_button_clicked(
     stitching_widget_with_mosaic, mocker, file_name
