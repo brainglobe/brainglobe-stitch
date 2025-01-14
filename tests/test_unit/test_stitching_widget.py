@@ -459,6 +459,28 @@ def test_on_stitch_finished(stitching_widget_with_mosaic, mocker):
     assert stitching_widget_with_mosaic.adjust_intensity_button.isEnabled()
 
 
+def tests_on_adjust_intensity_button_clicked(
+    stitching_widget_with_mosaic, mocker
+):
+    """
+    Tests that the _on_adjust_intensity_button_clicked method correctly calls
+    the adjust_intensity method of the ImageMosaic object with the correct
+    arguments.
+    """
+    mock_normalise_intensity = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.normalise_intensity",
+        autospec=True,
+    )
+
+    stitching_widget_with_mosaic._on_adjust_intensity_button_clicked()
+
+    mock_normalise_intensity.assert_called_once_with(
+        stitching_widget_with_mosaic.image_mosaic,
+        resolution_level=3,
+        percentile=80,
+    )
+
+
 def test_check_imagej_path_valid(stitching_widget):
     """
     Creates a mock imageJ file in the home directory and sets it as the
