@@ -392,7 +392,7 @@ def test_on_stitch_button_clicked(
 
 
 def test_on_stitch_button_clicked_no_imagej(
-    stitching_widget, test_constants, mocker
+    stitching_widget_with_mosaic, test_constants, mocker
 ):
     """
     Tests that the _on_stitch_button_clicked method correctly shows a warning
@@ -407,11 +407,11 @@ def test_on_stitch_button_clicked_no_imagej(
     )
     error_message = "Select the ImageJ path prior to stitching"
 
-    stitching_widget._on_stitch_button_clicked()
+    stitching_widget_with_mosaic._on_stitch_button_clicked()
 
     mock_show_warning.assert_called_once_with(error_message)
     mock_display_info.assert_called_once_with(
-        stitching_widget, "Warning", error_message
+        stitching_widget_with_mosaic, "Warning", error_message
     )
 
 
