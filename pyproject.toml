@@ -30,7 +30,8 @@ dependencies = [
     "zarr",
     "numpy",
     "qtpy",
-    "tifffile"
+    "tifffile",
+    "qt-niu"
 ]
 
 [project.urls]
