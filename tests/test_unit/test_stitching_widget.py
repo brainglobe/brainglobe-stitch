@@ -376,18 +376,108 @@ def test_on_stitch_button_clicked(
     stitching_widget = stitching_widget_with_mosaic
     stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
-    mock_stitch_function = mocker.patch(
-        "brainglobe_stitch.stitching_widget.ImageMosaic.stitch",
+    mock_create_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.create_worker",
         autospec=True,
     )
 
     stitching_widget._on_stitch_button_clicked()
 
-    mock_stitch_function.assert_called_once_with(
-        stitching_widget.image_mosaic,
+    mock_create_worker.assert_called_once_with(
+        stitching_widget_with_mosaic.image_mosaic.stitch,
         stitching_widget.imagej_path,
         resolution_level=2,
         selected_channel="",
+    )
+
+
+def test_on_stitch_button_clicked_no_image_mosaic(
+    stitching_widget, test_constants, mocker
+):
+    """
+    Tests that the _on_stitch_button_clicked method correctly shows a warning
+    message to the user when the ImageMosaic object is not set.
+    """
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning"
+    )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+    error_message = "Open a mesoSPIM directory prior to stitching"
+
+    stitching_widget._on_stitch_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget, "Warning", error_message
+    )
+
+
+def test_on_stitch_button_clicked_no_imagej(
+    stitching_widget_with_mosaic, test_constants, mocker
+):
+    """
+    Tests that the _on_stitch_button_clicked method correctly shows a warning
+    message to the user when the imageJ path is not set.
+    """
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning"
+    )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+    error_message = "Select the ImageJ path prior to stitching"
+
+    stitching_widget_with_mosaic._on_stitch_button_clicked()
+
+    mock_show_warning.assert_called_once_with(error_message)
+    mock_display_info.assert_called_once_with(
+        stitching_widget_with_mosaic, "Warning", error_message
+    )
+
+
+def test_on_stitch_finished(stitching_widget_with_mosaic, mocker):
+    """
+    Tests that the _on_stitch_finished method correctly sets the image_mosaic
+    attribute of the StitchingWidget to None and enables the create_pyramid
+    button.
+    """
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info"
+    )
+    stitching_widget = stitching_widget_with_mosaic
+
+    stitching_widget._on_stitch_finished()
+
+    mock_show_info.assert_called_once_with("Stitching complete")
+
+    assert stitching_widget_with_mosaic.fuse_button.isEnabled()
+    assert stitching_widget_with_mosaic.stitch_button.isEnabled()
+    assert stitching_widget_with_mosaic.adjust_intensity_button.isEnabled()
+
+
+def tests_on_adjust_intensity_button_clicked(
+    stitching_widget_with_mosaic, mocker
+):
+    """
+    Tests that the _on_adjust_intensity_button_clicked method correctly calls
+    the adjust_intensity method of the ImageMosaic object with the correct
+    arguments.
+    """
+    mock_normalise_intensity = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.normalise_intensity",
+        autospec=True,
+    )
+
+    stitching_widget_with_mosaic._on_adjust_intensity_button_clicked()
+
+    mock_normalise_intensity.assert_called_once_with(
+        stitching_widget_with_mosaic.image_mosaic,
+        resolution_level=3,
+        percentile=80,
     )
 
 
@@ -469,6 +559,42 @@ def test_update_tiles_from_mosaic(
         assert (tile.translate == test_data[1]).all()
 
 
+def test_on_open_dialog_output_clicked(stitching_widget, mocker):
+    """
+    Test that the on_open_dialog_output_clicked method.
+    The directory is provided by mocking the return of the
+    QFileDialog.getExistingDirectory method.
+    """
+    test_dir = str(Path.home() / "test_dir")
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getSaveFileName",
+        return_value=[test_dir],
+    )
+
+    stitching_widget._on_open_file_dialog_output_clicked()
+
+    assert stitching_widget.select_output_path_text_field.text() == test_dir
+
+
+def test_on_open_dialog_output_clicked_cancelled(stitching_widget, mocker):
+    """
+    Mocks the QFileDialog.getExistingDirectory method to return an empty string
+    to mimic the user cancelling the file dialog.
+    The select_output_path_text_field should retain its original value.
+    """
+    original_value = stitching_widget.select_output_path_text_field.text()
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.QFileDialog.getExistingDirectory",
+        return_value="",
+    )
+
+    stitching_widget._on_open_file_dialog_clicked()
+
+    assert (
+        stitching_widget.select_output_path_text_field.text() == original_value
+    )
+
+
 @pytest.mark.parametrize("file_name", ["fused_image.h5", "fused_image.zarr"])
 def test_on_fuse_button_clicked(
     stitching_widget_with_mosaic, mocker, file_name
@@ -484,11 +610,14 @@ def test_on_fuse_button_clicked(
         autospec=True,
     )
 
-    stitching_widget.output_file_name_field.setText(file_name)
+    output_path = stitching_widget.working_directory / file_name
+    stitching_widget.select_output_path_text_field.setText(str(output_path))
 
     stitching_widget._on_fuse_button_clicked()
 
-    mock_fuse.assert_called_once_with(stitching_widget.image_mosaic, file_name)
+    mock_fuse.assert_called_once_with(
+        stitching_widget.image_mosaic, output_path, normalise_intensity=False
+    )
     mock_display_info.assert_called_once_with(
         stitching_widget,
         "Info",
@@ -527,7 +656,7 @@ def test_on_fuse_button_clicked_wrong_suffix(
 ):
     stitching_widget = stitching_widget_with_mosaic
 
-    stitching_widget.output_file_name_field.setText("fused_image.tif")
+    stitching_widget.select_output_path_text_field.setText("fused_image.tif")
     error_message = "Output file name should end with .zarr, .h5"
 
     mock_show_warning = mocker.patch(
