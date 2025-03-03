@@ -202,7 +202,7 @@ class StitchingWidget(QWidget):
 
         self.layout().addWidget(QLabel("Path to ImageJ executable:"))
         self.layout().addWidget(self.select_imagej_path)
-
+        self.layout().addWidget(QLabel("Reference channel:"))
         self.fuse_channel_dropdown = QComboBox(parent=self)
         self.layout().addWidget(self.fuse_channel_dropdown)
 
@@ -210,13 +210,6 @@ class StitchingWidget(QWidget):
         self.stitch_button.clicked.connect(self._on_stitch_button_clicked)
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
-
-        self.adjust_intensity_button = QPushButton("Adjust Intensity")
-        self.adjust_intensity_button.clicked.connect(
-            self._on_adjust_intensity_button_clicked
-        )
-        self.adjust_intensity_button.setEnabled(False)
-        self.layout().addWidget(self.adjust_intensity_button)
 
         self.adjust_intensity_collapsible = QCollapsible(
             "Intensity Adjustment Options"
@@ -239,6 +232,15 @@ class StitchingWidget(QWidget):
 
         self.layout().addWidget(self.adjust_intensity_collapsible)
         self.adjust_intensity_collapsible.collapse(animate=False)
+
+        self.adjust_intensity_button = QPushButton(
+            "Preview Intensity Adjustment"
+        )
+        self.adjust_intensity_button.clicked.connect(
+            self._on_adjust_intensity_button_clicked
+        )
+        self.adjust_intensity_button.setEnabled(False)
+        self.layout().addWidget(self.adjust_intensity_button)
 
         self.fuse_option_widget = QWidget(parent=self)
         self.fuse_option_widget.setLayout(
@@ -465,6 +467,8 @@ class StitchingWidget(QWidget):
         )
 
         self.update_tiles_from_mosaic(data_for_napari)
+
+        show_info("Intensity adjusted")
 
     def _on_open_file_dialog_output_clicked(self) -> None:
         """
