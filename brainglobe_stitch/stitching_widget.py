@@ -234,6 +234,13 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.layout().addWidget(self.adjust_intensity_button)
 
+        self.reset_preview_button = QPushButton("Reset Preview")
+        self.reset_preview_button.clicked.connect(
+            self._on_reset_preview_button_clicked
+        )
+        self.reset_preview_button.setEnabled(False)
+        self.layout().addWidget(self.reset_preview_button)
+
         self.layout().addWidget(QLabel("Fuse Options:"))
         self.fuse_option_widget = QWidget(parent=self)
         self.fuse_option_widget.setLayout(
@@ -348,6 +355,7 @@ class StitchingWidget(QWidget):
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
         self.adjust_intensity_button.setEnabled(True)
+        self.reset_preview_button.setEnabled(True)
 
     def _set_tile_layers(self, tile_layer: napari.layers.Image) -> None:
         """
@@ -448,6 +456,7 @@ class StitchingWidget(QWidget):
         self.fuse_button.setEnabled(True)
         self.stitch_button.setEnabled(True)
         self.adjust_intensity_button.setEnabled(True)
+        self.reset_preview_button.setEnabled(True)
 
     def _on_adjust_intensity_button_clicked(self):
         self.image_mosaic.normalise_intensity(
@@ -462,6 +471,19 @@ class StitchingWidget(QWidget):
         self.update_tiles_from_mosaic(data_for_napari)
 
         show_info("Intensity adjusted")
+
+    def _on_reset_preview_button_clicked(self):
+        self.image_mosaic.reload_resolution_pyramid_level(
+            resolution_level=self.resolution_to_display
+        )
+
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
+
+        self.update_tiles_from_mosaic(data_for_napari)
+
+        show_info("Preview reset")
 
     def _on_open_file_dialog_output_clicked(self) -> None:
         """
