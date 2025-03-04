@@ -434,19 +434,16 @@ class ImageMosaic:
         percentile: int
             The percentile based on which the normalisation is done.
         """
+        # Calculate scale factors on at least resolution level 2
+        # The tiles are adjusted as the scale factors are calculated
+        self.calculate_intensity_scale_factors(
+            max(resolution_level, 2), percentile
+        )
+
+        # Won't adjust the intensity factors if it was done during the scale
+        # factor calculation
         if self.intensity_adjusted[resolution_level]:
-            print("Intensity already adjusted at this resolution scale.")
             return
-
-        if self.scale_factors is None:
-            # Calculate scale factors on at least resolution level 2
-            # The tiles are adjusted as the scale factors are calculated
-            self.calculate_intensity_scale_factors(
-                max(resolution_level, 2), percentile
-            )
-
-            if self.intensity_adjusted[resolution_level]:
-                return
 
         assert self.scale_factors is not None
 
@@ -475,6 +472,10 @@ class ImageMosaic:
         """
         num_tiles = len(self.tiles)
         scale_factors = np.ones((num_tiles, num_tiles))
+
+        if self.intensity_adjusted[resolution_level]:
+            self.reload_resolution_pyramid_level(resolution_level)
+            self.intensity_adjusted[resolution_level] = False
 
         for tile_i in self.tiles:
             # Iterate through the neighbours of each tile

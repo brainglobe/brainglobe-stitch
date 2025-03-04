@@ -459,6 +459,11 @@ class StitchingWidget(QWidget):
         self.reset_preview_button.setEnabled(True)
 
     def _on_adjust_intensity_button_clicked(self):
+        if self.image_mosaic.intensity_adjusted[self.resolution_to_display]:
+            self.image_mosaic.reload_resolution_pyramid_level(
+                self.resolution_to_display
+            )
+
         self.image_mosaic.normalise_intensity(
             resolution_level=self.resolution_to_display,
             percentile=self.percentile_field.value(),
@@ -473,9 +478,11 @@ class StitchingWidget(QWidget):
         show_info("Intensity adjusted")
 
     def _on_reset_preview_button_clicked(self):
-        self.image_mosaic.reload_resolution_pyramid_level(
-            resolution_level=self.resolution_to_display
-        )
+        for i, scaled in enumerate(self.image_mosaic.intensity_adjusted):
+            if scaled:
+                self.image_mosaic.reload_resolution_pyramid_level(
+                    resolution_level=i
+                )
 
         data_for_napari = self.image_mosaic.data_for_napari(
             self.resolution_to_display
