@@ -27,7 +27,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from superqt import QCollapsible
 
 from brainglobe_stitch.file_utils import (
     check_mesospim_directory,
@@ -211,9 +210,7 @@ class StitchingWidget(QWidget):
         self.stitch_button.setEnabled(False)
         self.layout().addWidget(self.stitch_button)
 
-        self.adjust_intensity_collapsible = QCollapsible(
-            "Intensity Adjustment Options"
-        )
+        self.layout().addWidget(QLabel("Intensity Adjustment Options:"))
         self.adjust_intensity_menu = QWidget()
         self.adjust_intensity_menu.setLayout(
             QFormLayout(parent=self.adjust_intensity_menu)
@@ -226,12 +223,7 @@ class StitchingWidget(QWidget):
             "Percentile", self.percentile_field
         )
 
-        self.adjust_intensity_collapsible.setContent(
-            self.adjust_intensity_menu
-        )
-
-        self.layout().addWidget(self.adjust_intensity_collapsible)
-        self.adjust_intensity_collapsible.collapse(animate=False)
+        self.layout().addWidget(self.adjust_intensity_menu)
 
         self.adjust_intensity_button = QPushButton(
             "Preview Intensity Adjustment"
@@ -242,6 +234,7 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.layout().addWidget(self.adjust_intensity_button)
 
+        self.layout().addWidget(QLabel("Fuse Options:"))
         self.fuse_option_widget = QWidget(parent=self)
         self.fuse_option_widget.setLayout(
             QFormLayout(parent=self.fuse_option_widget)
