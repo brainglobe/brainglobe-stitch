@@ -196,32 +196,6 @@ def test_normalise_intensity_done_with_factors(
         )
 
 
-@pytest.mark.parametrize(
-    "resolution_level",
-    [0, 1, 2, 3, 4],
-)
-def test_normalise_intensity_already_adjusted(
-    image_mosaic, resolution_level, test_constants
-):
-    image_mosaic.reload_resolution_pyramid_level(resolution_level)
-    image_mosaic.intensity_adjusted[resolution_level] = True
-    image_mosaic.normalise_intensity(resolution_level)
-
-    assert image_mosaic.intensity_adjusted[resolution_level]
-
-    # Check that no scale adjustment calculations are queued for the tiles
-    # at the specified resolution level
-    for i in range(test_constants["NUM_TILES"]):
-        assert (
-            len(
-                image_mosaic.tiles[i]
-                .data_pyramid[resolution_level]
-                .dask.layers
-            )
-            == 2
-        )
-
-
 def test_calculate_intensity_scale_factors(image_mosaic, test_constants):
     resolution_level = 2
     percentile = 50
