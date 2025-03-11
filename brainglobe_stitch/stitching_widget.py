@@ -283,6 +283,7 @@ class StitchingWidget(QWidget):
         self.layout().addWidget(self.fuse_button)
 
         self.layout().addWidget(self.progress_bar)
+        self.progress_bar.setVisible(False)
 
     def _on_open_file_dialog_clicked(self) -> None:
         """
@@ -313,6 +314,7 @@ class StitchingWidget(QWidget):
         """
         Create the resolution pyramid for the input mesoSPIM h5 data.
         """
+        self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 100)
 
@@ -322,11 +324,18 @@ class StitchingWidget(QWidget):
             yield_progress=True,
         )
         worker.yielded.connect(self.progress_bar.setValue)
-        worker.finished.connect(self.progress_bar.reset)
+        worker.finished.connect(self._create_pyramid_finished)
         worker.start()
 
         self.create_pyramid_button.setEnabled(False)
         self.add_tiles_button.setEnabled(True)
+
+    def _create_pyramid_finished(self):
+        show_info("Resolution pyramid created")
+        self.add_tiles_button.setEnabled(True)
+        self.create_pyramid_button.setEnabled(False)
+        self.progress_bar.reset()
+        self.progress_bar.setVisible(False)
 
     def _on_add_tiles_button_clicked(self) -> None:
         """
