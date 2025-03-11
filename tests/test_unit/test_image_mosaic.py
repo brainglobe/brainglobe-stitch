@@ -109,24 +109,156 @@ def test_data_for_napari(image_mosaic, test_constants):
         assert (tile_data[1] == expected_pos).all()
 
 
+@pytest.mark.parametrize(
+    "resolution_level",
+    [0, 1],
+)
+def test_normalise_intensity(
+    mocker, test_constants, image_mosaic, resolution_level
+):
+    def force_set_scale_factors(*args, **kwargs):
+        image_mosaic.scale_factors = test_constants[
+            "EXPECTED_INTENSITY_FACTORS"
+        ]
+        image_mosaic.intensity_adjusted[args[0]] = True
+
+    mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.calculate_intensity_scale_factors",
+        side_effect=force_set_scale_factors,
+    )
+
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    assert not image_mosaic.intensity_adjusted[resolution_level]
+    image_mosaic.scale_factors = None
+
+    image_mosaic.normalise_intensity(resolution_level)
+    assert image_mosaic.intensity_adjusted[resolution_level]
+    assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+
+    for i in range(test_constants["NUM_TILES"]):
+        # Check that there each tile has the correct number of pending tasks
+        # in the dask graph
+        # Expect to have 4: 2 for loading the data, 2 for scaling the data
+        # Since the resolution levels are less than 2, the scaling factors are
+        # calculated on a different resolution level and then applied to the
+        # current resolution level
+        if test_constants["EXPECTED_INTENSITY_FACTORS"][i] != 1.0:
+            assert (
+                len(
+                    image_mosaic.tiles[i]
+                    .data_pyramid[resolution_level]
+                    .dask.layers
+                )
+                == 4
+            )
+
+
+@pytest.mark.parametrize(
+    "resolution_level",
+    [2, 3, 4],
+)
+def test_normalise_intensity_done_with_factors(
+    mocker, image_mosaic, resolution_level, test_constants
+):
+    def force_set_scale_factors(*args, **kwargs):
+        image_mosaic.scale_factors = test_constants[
+            "EXPECTED_INTENSITY_FACTORS"
+        ]
+        image_mosaic.intensity_adjusted[args[0]] = True
+
+    mock_calc_intensity_factors = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.calculate_intensity_scale_factors",
+        side_effect=force_set_scale_factors,
+    )
+
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    assert not image_mosaic.intensity_adjusted[resolution_level]
+    image_mosaic.scale_factors = None
+
+    image_mosaic.normalise_intensity(resolution_level)
+    assert image_mosaic.intensity_adjusted[resolution_level]
+    assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+
+    mock_calc_intensity_factors.assert_called_once_with(resolution_level, 80)
+
+    # Check that no scale adjustment calculations are queued for the tiles
+    # at the specified resolution level as the correction factors were
+    # calculated based on this resolution level,
+    # therefore no calculations queued.
+    for i in range(test_constants["NUM_TILES"]):
+        assert (
+            len(
+                image_mosaic.tiles[i]
+                .data_pyramid[resolution_level]
+                .dask.layers
+            )
+            == 2
+        )
+
+
+def test_calculate_intensity_scale_factors(image_mosaic, test_constants):
+    resolution_level = 2
+    percentile = 50
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.scale_factors = None
+
+    image_mosaic.calculate_intensity_scale_factors(
+        resolution_level, percentile
+    )
+
+    assert len(image_mosaic.scale_factors) == test_constants["NUM_TILES"]
+    # Check the relative tolerance
+    assert np.allclose(
+        image_mosaic.scale_factors,
+        test_constants["EXPECTED_INTENSITY_FACTORS"],
+        rtol=1e-2,
+    )
+
+
 def test_fuse_invalid_file_type(image_mosaic):
+    output_file = image_mosaic.xml_path.parent / "fused.txt"
     with pytest.raises(ValueError):
-        image_mosaic.fuse("fused.txt")
+        image_mosaic.fuse(output_file)
 
 
 def test_fuse_bdv_h5_defaults(image_mosaic, mocker, test_constants):
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
     )
-    file_name = "fused.h5"
+    file_path = image_mosaic.xml_path.parent / "fused.h5"
 
-    image_mosaic.fuse(file_name)
+    image_mosaic.fuse(file_path)
     mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
         test_constants["DEFAULT_PYRAMID_DEPTH"],
         test_constants["DEFAULT_CHUNK_SHAPE"],
+    )
+
+
+def test_fuse_zarr_normalise_intensity(image_mosaic, mocker, test_constants):
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
+
+    mock_fuse_to_zarr = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
+    )
+    mock_normalise_intensity = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.normalise_intensity"
+    )
+
+    image_mosaic.normalise_intensity = mock_normalise_intensity
+    image_mosaic.fuse(file_path, normalise_intensity=True)
+
+    mock_normalise_intensity.assert_called_once_with(0, 80)
+    mock_fuse_to_zarr.assert_called_once_with(
+        file_path,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
     )
 
 
@@ -145,11 +277,18 @@ def test_fuse_bdv_h5_custom(
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_bdv_h5",
     )
-    file_name = "fused.h5"
+    file_path = image_mosaic.xml_path.parent / "fused.h5"
 
-    image_mosaic.fuse(file_name, downscale_factors, chunk_shape, pyramid_depth)
+    normalise_intensity = False
+    image_mosaic.fuse(
+        file_path,
+        normalise_intensity,
+        downscale_factors,
+        chunk_shape,
+        pyramid_depth,
+    )
     mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         downscale_factors,
         pyramid_depth,
@@ -158,16 +297,16 @@ def test_fuse_bdv_h5_custom(
 
 
 def test_fuse_zarr_file(image_mosaic, mocker, test_constants):
-    file_name = "fused.zarr"
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
 
     mock_fuse_to_zarr = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
     )
 
-    image_mosaic.fuse(file_name)
+    image_mosaic.fuse(file_path)
 
     mock_fuse_to_zarr.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
         test_constants["DEFAULT_PYRAMID_DEPTH"],
@@ -198,10 +337,12 @@ def test_fuse_bdv_zarr_custom(
     mock_fuse_function = mocker.patch(
         "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr",
     )
-    file_name = "fused.zarr"
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
 
+    normalise_intensity = False
     image_mosaic.fuse(
-        file_name,
+        file_path,
+        normalise_intensity,
         downscale_factors,
         chunk_shape,
         pyramid_depth,
@@ -209,7 +350,7 @@ def test_fuse_bdv_zarr_custom(
         compression_level,
     )
     mock_fuse_function.assert_called_once_with(
-        image_mosaic.xml_path.parent / file_name,
+        file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
         downscale_factors,
         pyramid_depth,
