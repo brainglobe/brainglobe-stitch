@@ -27,7 +27,7 @@ dependencies = [
     "h5py",
     "napari-ome-zarr",
     "ome-zarr",
-    "zarr",
+    "zarr<3",
     "numpy",
     "qtpy",
     "tifffile",
