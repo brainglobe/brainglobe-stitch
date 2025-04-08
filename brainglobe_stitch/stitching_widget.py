@@ -277,11 +277,13 @@ class StitchingWidget(QWidget):
         self.fuse_channel_dropdown.clear()
         self.fuse_channel_dropdown.addItems(self.image_mosaic.channel_names)
 
-        min_size_display = np.array((256, 256, 256))
+        # The xy pixel resolution to display in the viewer should never be
+        # smaller than 256x256 pixels
+        min_size_display = np.array((1, 256, 256))
         self.resolution_to_display = 0
 
         for tile_data in self.image_mosaic.tiles[0].data_pyramid:
-            if np.any(tile_data.shape <= min_size_display):
+            if np.any(tile_data <= min_size_display):
                 break
             self.resolution_to_display += 1
 
