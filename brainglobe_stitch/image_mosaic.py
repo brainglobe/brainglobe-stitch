@@ -383,6 +383,7 @@ class ImageMosaic:
                 )
 
             self.intensity_adjusted[resolution_level] = False
+            self.overlaps_interpolated[resolution_level] = False
 
     def calculate_overlaps(self) -> None:
         """
