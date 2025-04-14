@@ -548,6 +548,7 @@ class ImageMosaic:
         self,
         output_path: Path,
         normalise_intensity: bool = False,
+        normalise_intensity_percentile: int = 80,
         interpolate: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
         chunk_shape: Tuple[int, int, int] = (128, 128, 128),
@@ -565,6 +566,8 @@ class ImageMosaic:
             Accepts .zarr and .h5 extensions.#
         normalise_intensity: bool, default: False
             Normalise the intensity differences between tiles.
+        normalise_intensity_percentile: int, default: 80
+            The brightness percentile to use for normalising intensity.
         interpolate: bool, default: False
             Interpolate the overlaps between tiles.
         downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
@@ -587,10 +590,14 @@ class ImageMosaic:
         )
 
         if normalise_intensity:
-            self.normalise_intensity(0, 80)
+            self.normalise_intensity(0, normalise_intensity_percentile)
+        elif self.intensity_adjusted[0]:
+            self.reload_resolution_pyramid_level(0)
 
         if interpolate:
             self.interpolate_overlaps(0)
+        elif self.overlaps_interpolated[0]:
+            self.reload_resolution_pyramid_level(0)
 
         if output_path.suffix == ".zarr":
             self._fuse_to_zarr(

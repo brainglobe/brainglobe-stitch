@@ -601,6 +601,7 @@ class StitchingWidget(QWidget):
         self.image_mosaic.fuse(
             output_path,
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
+            normalise_intensity_percentile=self.percentile_field.value(),
             interpolate=self.interpolate_overlaps_toggle.isChecked(),
         )
 

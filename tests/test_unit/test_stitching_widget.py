@@ -642,6 +642,7 @@ def test_on_fuse_button_clicked(
         stitching_widget.image_mosaic,
         output_path,
         normalise_intensity=False,
+        normalise_intensity_percentile=80,
         interpolate=False,
     )
     mock_display_info.assert_called_once_with(
