@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import dask.array as da
 import numpy as np
@@ -42,7 +42,7 @@ class Tile:
         self,
         tile_name: str,
         tile_id: int,
-        attributes: Dict[str, str],
+        attributes: Dict[str, Union[str, int, float]],
     ):
         self.name: str = tile_name
         self.id: int = tile_id
