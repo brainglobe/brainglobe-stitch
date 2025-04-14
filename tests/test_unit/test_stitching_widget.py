@@ -700,3 +700,116 @@ def test_on_fuse_button_clicked_wrong_suffix(
     mock_display_info.assert_called_once_with(
         stitching_widget, "Warning", error_message
     )
+
+
+def test_on_reset_preview_button_clicked_no_change(
+    stitching_widget_with_mosaic, mocker
+):
+    """
+    Tests that the _on_reset_preview_button_clicked method doesn't call
+    the reload_resolution_pyramid_level if no changes to the pyramid have
+    been made.
+    """
+    mock_reset_preview = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.reload_resolution_pyramid_level",
+        autospec=True,
+    )
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info",
+        autospec=True,
+    )
+
+    stitching_widget_with_mosaic._on_reset_preview_button_clicked()
+
+    mock_reset_preview.assert_not_called()
+    mock_show_info.assert_called_once_with("Preview reset")
+
+
+def test_on_reset_preview_button_clicked_brightness_adjust(
+    stitching_widget_with_mosaic, mocker
+):
+    """
+    Tests that the _on_reset_preview_button_clicked method calls the
+    reload_resolution_pyramid_level if the brightness of the preview has
+    been adjusted.
+    """
+    mock_reset_preview = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.reload_resolution_pyramid_level",
+        autospec=True,
+    )
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info",
+        autospec=True,
+    )
+    level = stitching_widget_with_mosaic.resolution_to_display
+    stitching_widget_with_mosaic.image_mosaic.intensity_adjusted[level] = True
+
+    stitching_widget_with_mosaic._on_reset_preview_button_clicked()
+
+    mock_reset_preview.assert_called_once()
+    mock_show_info.assert_called_once_with("Preview reset")
+
+    stitching_widget_with_mosaic.image_mosaic.intensity_adjusted[level] = False
+
+
+def test_on_reset_preview_button_clicked_interpolation(
+    stitching_widget_with_mosaic, mocker
+):
+    """
+    Tests that the _on_reset_preview_button_clicked method calls the
+    reload_resolution_pyramid_level if the preview resolution is interpolated.
+    """
+    mock_reset_preview = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.reload_resolution_pyramid_level",
+        autospec=True,
+    )
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info",
+        autospec=True,
+    )
+    level = stitching_widget_with_mosaic.resolution_to_display
+    stitching_widget_with_mosaic.image_mosaic.overlaps_interpolated[level] = (
+        True
+    )
+
+    stitching_widget_with_mosaic._on_reset_preview_button_clicked()
+
+    mock_reset_preview.assert_called_once()
+    mock_show_info.assert_called_once_with("Preview reset")
+
+    stitching_widget_with_mosaic.image_mosaic.overlaps_interpolated[level] = (
+        False
+    )
+
+
+def test_on_reset_preview_button_clicked_both(
+    stitching_widget_with_mosaic, mocker
+):
+    """
+    Tests that the _on_reset_preview_button_clicked method calls the
+    reload_resolution_pyramid_level if the brightness of the preview has
+    been adjusted and the preview resolution is interpolated.
+    """
+    mock_reset_preview = mocker.patch(
+        "brainglobe_stitch.stitching_widget.ImageMosaic.reload_resolution_pyramid_level",
+        autospec=True,
+    )
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info",
+        autospec=True,
+    )
+    level = stitching_widget_with_mosaic.resolution_to_display
+    stitching_widget_with_mosaic.image_mosaic.intensity_adjusted[level] = True
+    stitching_widget_with_mosaic.image_mosaic.overlaps_interpolated[level] = (
+        True
+    )
+
+    stitching_widget_with_mosaic._on_reset_preview_button_clicked()
+
+    mock_reset_preview.assert_called_once()
+    mock_show_info.assert_called_once_with("Preview reset")
+
+    stitching_widget_with_mosaic.image_mosaic.intensity_adjusted[level] = False
+    stitching_widget_with_mosaic.image_mosaic.overlaps_interpolated[level] = (
+        False
+    )

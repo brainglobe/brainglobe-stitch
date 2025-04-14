@@ -520,8 +520,13 @@ class StitchingWidget(QWidget):
         show_info("Linear interpolation applied to overlapping regions")
 
     def _on_reset_preview_button_clicked(self):
-        for i, scaled in enumerate(self.image_mosaic.intensity_adjusted):
-            if scaled:
+        for i, (scaled, interpolated) in enumerate(
+            zip(
+                self.image_mosaic.intensity_adjusted,
+                self.image_mosaic.overlaps_interpolated,
+            )
+        ):
+            if scaled or interpolated:
                 self.image_mosaic.reload_resolution_pyramid_level(
                     resolution_level=i
                 )
