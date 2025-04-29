@@ -56,6 +56,18 @@ def generate_tile_data_random() -> Tuple[List[da.Array], npt.NDArray]:
     return generate_tile(image_data)
 
 
+def generate_tile_data_high() -> Tuple[List[da.Array], npt.NDArray]:
+    image_data = da.ones((256, 256, 256), dtype=np.int16) * TILE_DATA_HIGH
+
+    return generate_tile(image_data)
+
+
+def generate_tile_data_low() -> Tuple[List[da.Array], npt.NDArray]:
+    image_data = da.zeros((256, 256, 256), dtype=np.int16)
+
+    return generate_tile(image_data)
+
+
 @pytest.fixture
 def generate_overlap():
     """
@@ -211,3 +223,126 @@ def test_replace_overlap_data(generate_overlap, res_level):
             ]
             == 0
         ).all()
+
+
+@pytest.mark.parametrize(
+    "resolution_level, tile_positions",
+    [
+        (0, [[10, 0, 10], [0, 245, 15]]),
+        (0, [[10, 10, 0], [0, 15, 245]]),
+        (0, [[0, 245, 15], [10, 0, 10]]),
+        (0, [[0, 15, 245], [10, 10, 0]]),
+        (1, [[10, 0, 10], [0, 245, 15]]),
+        (1, [[10, 10, 0], [0, 15, 245]]),
+        (1, [[0, 245, 15], [10, 0, 10]]),
+        (1, [[0, 15, 245], [10, 10, 0]]),
+        (2, [[10, 0, 10], [0, 245, 15]]),
+        (2, [[10, 10, 0], [0, 15, 245]]),
+        (2, [[0, 245, 15], [10, 0, 10]]),
+        (2, [[0, 15, 245], [10, 10, 0]]),
+    ],
+)
+def test_linear_interpolation(resolution_level, tile_positions):
+    tile_zero = Tile(
+        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
+    )
+    tile_one = Tile(
+        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
+    )
+
+    # Set the position such that there is an overlap of size [246, 9, 251]
+    tile_zero.position = np.array(tile_positions[0])
+    tile_one.position = np.array(tile_positions[1])
+
+    (
+        tile_zero.data_pyramid,
+        tile_zero.resolution_pyramid,
+    ) = generate_tile_data_low()
+    (
+        tile_one.data_pyramid,
+        tile_one.resolution_pyramid,
+    ) = generate_tile_data_high()
+
+    overlap_coordinates = np.array(
+        [max(tile_zero.position[i], tile_one.position[i]) for i in range(3)]
+    )
+
+    overlap_size = (
+        tile_zero.data_pyramid[0].shape
+        - overlap_coordinates
+        + np.array(
+            [
+                min(tile_zero.position[i], tile_one.position[i])
+                for i in range(3)
+            ]
+        )
+    )
+
+    overlap = Overlap(overlap_coordinates, overlap_size, tile_zero, tile_one)
+
+    overlap.linear_interpolation(
+        resolution_level, tile_one.data_pyramid[resolution_level].shape
+    )
+
+    overlap_i, overlap_j = overlap.extract_tile_overlaps(resolution_level)
+
+    assert (overlap_i == overlap_j).all()
+    assert overlap_i.mean() == TILE_DATA_HIGH / 2
+    assert overlap_j.mean() == TILE_DATA_HIGH / 2
+
+
+@pytest.mark.parametrize(
+    "resolution_level, tile_positions",
+    [
+        (0, [[10, 0, 0], [0, 245, 245]]),
+        (1, [[10, 0, 0], [0, 245, 245]]),
+        (2, [[10, 0, 0], [0, 245, 245]]),
+    ],
+)
+def test_linear_interpolation_diagonal(resolution_level, tile_positions):
+    tile_zero = Tile(
+        "test_1", 0, {"channel": 0, "tile": 0, "illumination": 0, "angle": 0}
+    )
+    tile_one = Tile(
+        "test_2", 1, {"channel": 0, "tile": 1, "illumination": 0, "angle": 0}
+    )
+
+    # Set the position such that there is an overlap of size [246, 9, 251]
+    tile_zero.position = np.array(tile_positions[0])
+    tile_one.position = np.array(tile_positions[1])
+
+    (
+        tile_zero.data_pyramid,
+        tile_zero.resolution_pyramid,
+    ) = generate_tile_data_low()
+    (
+        tile_one.data_pyramid,
+        tile_one.resolution_pyramid,
+    ) = generate_tile_data_high()
+
+    overlap_coordinates = np.array(
+        [max(tile_zero.position[i], tile_one.position[i]) for i in range(3)]
+    )
+
+    overlap_size = (
+        tile_zero.data_pyramid[0].shape
+        - overlap_coordinates
+        + np.array(
+            [
+                min(tile_zero.position[i], tile_one.position[i])
+                for i in range(3)
+            ]
+        )
+    )
+
+    overlap = Overlap(overlap_coordinates, overlap_size, tile_zero, tile_one)
+
+    overlap.linear_interpolation(
+        resolution_level, tile_one.data_pyramid[resolution_level].shape
+    )
+
+    overlap_i, overlap_j = overlap.extract_tile_overlaps(resolution_level)
+
+    assert (overlap_i != overlap_j).all()
+    assert overlap_i.mean() == 0
+    assert overlap_j.mean() == TILE_DATA_HIGH

@@ -91,6 +91,34 @@ def test_stitch(mocker, image_mosaic, naive_bdv_directory, test_constants):
     )
 
 
+def test_calculate_overlaps(image_mosaic, test_constants):
+    """
+    Ensure that the calculate_overlaps method calculates the overlaps
+    correctly. The expected overlaps are stored in the dictionary returned by
+    the test_constants fixture.
+    """
+    image_mosaic.calculate_overlaps()
+
+    assert (
+        len(image_mosaic.overlaps) == test_constants["EXPECTED_NUM_OVERLAPS"]
+    )
+
+    expected_overlap_coordinates = test_constants[
+        "EXPECTED_OVERLAP_COORDINATES"
+    ]
+    expected_overlap_size = test_constants["EXPECTED_OVERLAP_SIZE"]
+
+    for idx, overlap in enumerate(image_mosaic.overlaps):
+        assert (
+            image_mosaic.overlaps[overlap].coordinates
+            == expected_overlap_coordinates[idx]
+        ).all()
+        assert (
+            image_mosaic.overlaps[overlap].size[0]
+            == expected_overlap_size[idx]
+        ).all()
+
+
 def test_data_for_napari(image_mosaic, test_constants):
     """
     Checks the return of the data_for_napari method. Each element of the
@@ -215,6 +243,38 @@ def test_calculate_intensity_scale_factors(image_mosaic, test_constants):
     )
 
 
+@pytest.mark.parametrize("resolution_level", [0, 1, 2, 3])
+def test_interpolate_overlaps(
+    image_mosaic, resolution_level, mocker, test_constants
+):
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    mock_linear_interpolation = mocker.patch(
+        "brainglobe_stitch.tile.Overlap.linear_interpolation",
+    )
+
+    image_mosaic.interpolate_overlaps(resolution_level)
+
+    assert image_mosaic.overlaps_interpolated[resolution_level]
+    assert (
+        mock_linear_interpolation.call_count
+        == test_constants["EXPECTED_NUM_OVERLAPS"]
+    )
+
+
+def test_interpolate_overlaps_already_done(image_mosaic, mocker):
+    resolution_level = 2
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+    image_mosaic.overlaps_interpolated[resolution_level] = True
+    mock_linear_interpolation = mocker.patch(
+        "brainglobe_stitch.tile.Overlap.linear_interpolation",
+    )
+    image_mosaic.interpolate_overlaps(resolution_level)
+
+    assert image_mosaic.overlaps_interpolated[resolution_level]
+    mock_linear_interpolation.assert_not_called()
+    image_mosaic.reload_resolution_pyramid_level(resolution_level)
+
+
 def test_fuse_invalid_file_type(image_mosaic):
     output_file = image_mosaic.xml_path.parent / "fused.txt"
     with pytest.raises(ValueError):
@@ -247,10 +307,97 @@ def test_fuse_zarr_normalise_intensity(image_mosaic, mocker, test_constants):
         "brainglobe_stitch.image_mosaic.ImageMosaic.normalise_intensity"
     )
 
-    image_mosaic.normalise_intensity = mock_normalise_intensity
     image_mosaic.fuse(file_path, normalise_intensity=True)
 
     mock_normalise_intensity.assert_called_once_with(0, 80)
+    mock_fuse_to_zarr.assert_called_once_with(
+        file_path,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
+    )
+
+
+def test_fuse_zarr_normalise_already_done(
+    image_mosaic, mocker, test_constants
+):
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
+
+    mock_fuse_to_zarr = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
+    )
+    mock_normalise_intensity = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.normalise_intensity"
+    )
+    mock_reload_pyramid_level = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.reload_resolution_pyramid_level"
+    )
+    image_mosaic.intensity_adjusted[0] = True
+
+    image_mosaic.fuse(file_path, normalise_intensity=False)
+
+    mock_normalise_intensity.assert_not_called()
+    mock_reload_pyramid_level.assert_called_once_with(0)
+    mock_fuse_to_zarr.assert_called_once_with(
+        file_path,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
+    )
+    image_mosaic.intensity_adjusted[0] = False
+
+
+def test_fuse_zarr_interpolate_already_done(
+    image_mosaic, mocker, test_constants
+):
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
+
+    mock_fuse_to_zarr = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
+    )
+    mock_interpolate_overlaps = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.interpolate_overlaps"
+    )
+    mock_reload_pyramid_level = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.reload_resolution_pyramid_level"
+    )
+    image_mosaic.overlaps_interpolated[0] = True
+
+    image_mosaic.fuse(file_path, interpolate=False)
+
+    mock_interpolate_overlaps.assert_not_called()
+    mock_reload_pyramid_level.assert_called_once_with(0)
+    mock_fuse_to_zarr.assert_called_once_with(
+        file_path,
+        test_constants["EXPECTED_FUSED_SHAPE"],
+        test_constants["DEFAULT_DOWNSAMPLE_FACTORS"],
+        test_constants["DEFAULT_PYRAMID_DEPTH"],
+        test_constants["DEFAULT_CHUNK_SHAPE"],
+        test_constants["DEFAULT_COMPRESSION_METHOD"],
+        test_constants["DEFAULT_COMPRESSION_LEVEL"],
+    )
+    image_mosaic.overlaps_interpolated[0] = False
+
+
+def test_fuse_zarr_interpolate(image_mosaic, mocker, test_constants):
+    file_path = image_mosaic.xml_path.parent / "fused.zarr"
+
+    mock_fuse_to_zarr = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic._fuse_to_zarr"
+    )
+    mock_interpolate_overlaps = mocker.patch(
+        "brainglobe_stitch.image_mosaic.ImageMosaic.interpolate_overlaps"
+    )
+
+    image_mosaic.fuse(file_path, interpolate=True)
+
+    mock_interpolate_overlaps.assert_called_once_with(0)
     mock_fuse_to_zarr.assert_called_once_with(
         file_path,
         test_constants["EXPECTED_FUSED_SHAPE"],
@@ -280,12 +427,14 @@ def test_fuse_bdv_h5_custom(
     file_path = image_mosaic.xml_path.parent / "fused.h5"
 
     normalise_intensity = False
+    interpolate = False
     image_mosaic.fuse(
-        file_path,
-        normalise_intensity,
-        downscale_factors,
-        chunk_shape,
-        pyramid_depth,
+        output_path=file_path,
+        normalise_intensity=normalise_intensity,
+        interpolate=interpolate,
+        downscale_factors=downscale_factors,
+        chunk_shape=chunk_shape,
+        pyramid_depth=pyramid_depth,
     )
     mock_fuse_function.assert_called_once_with(
         file_path,
@@ -340,14 +489,16 @@ def test_fuse_bdv_zarr_custom(
     file_path = image_mosaic.xml_path.parent / "fused.zarr"
 
     normalise_intensity = False
+    interpolate = False
     image_mosaic.fuse(
-        file_path,
-        normalise_intensity,
-        downscale_factors,
-        chunk_shape,
-        pyramid_depth,
-        compression_method,
-        compression_level,
+        output_path=file_path,
+        normalise_intensity=normalise_intensity,
+        interpolate=interpolate,
+        downscale_factors=downscale_factors,
+        chunk_shape=chunk_shape,
+        pyramid_depth=pyramid_depth,
+        compression_method=compression_method,
+        compression_level=compression_level,
     )
     mock_fuse_function.assert_called_once_with(
         file_path,

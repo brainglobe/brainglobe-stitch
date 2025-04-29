@@ -234,6 +234,15 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.layout().addWidget(self.adjust_intensity_button)
 
+        self.liner_interpolation_button = QPushButton(
+            "Preview Linear Interpolation"
+        )
+        self.liner_interpolation_button.clicked.connect(
+            self._on_linear_interpolation_button_clicked
+        )
+        self.liner_interpolation_button.setEnabled(False)
+        self.layout().addWidget(self.liner_interpolation_button)
+
         self.reset_preview_button = QPushButton("Reset Preview")
         self.reset_preview_button.clicked.connect(
             self._on_reset_preview_button_clicked
@@ -247,6 +256,7 @@ class StitchingWidget(QWidget):
             QFormLayout(parent=self.fuse_option_widget)
         )
         self.normalise_intensity_toggle = QCheckBox()
+        self.interpolate_overlaps_toggle = QCheckBox()
 
         self.select_output_path = QWidget()
         self.select_output_path.setLayout(QHBoxLayout())
@@ -270,10 +280,11 @@ class StitchingWidget(QWidget):
         self.fuse_option_widget.layout().addRow(
             "Normalise intensity:", self.normalise_intensity_toggle
         )
+        self.fuse_option_widget.layout().addRow(
+            "Interpolate overlaps:", self.interpolate_overlaps_toggle
+        )
         self.fuse_option_widget.layout().addRow(QLabel("Output file name:"))
         self.fuse_option_widget.layout().addRow(self.select_output_path)
-
-        self.layout().addWidget(self.fuse_option_widget)
 
         self.layout().addWidget(self.fuse_option_widget)
 
@@ -364,6 +375,7 @@ class StitchingWidget(QWidget):
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
         self.adjust_intensity_button.setEnabled(True)
+        self.liner_interpolation_button.setEnabled(True)
         self.reset_preview_button.setEnabled(True)
 
     def _set_tile_layers(self, tile_layer: napari.layers.Image) -> None:
@@ -451,6 +463,8 @@ class StitchingWidget(QWidget):
         self.fuse_button.setEnabled(False)
         self.stitch_button.setEnabled(False)
         self.adjust_intensity_button.setEnabled(False)
+        self.liner_interpolation_button.setEnabled(False)
+        self.reset_preview_button.setEnabled(False)
         worker.finished.connect(self._on_stitch_finished)
         worker.start()
 
@@ -465,6 +479,7 @@ class StitchingWidget(QWidget):
         self.fuse_button.setEnabled(True)
         self.stitch_button.setEnabled(True)
         self.adjust_intensity_button.setEnabled(True)
+        self.liner_interpolation_button.setEnabled(True)
         self.reset_preview_button.setEnabled(True)
 
     def _on_adjust_intensity_button_clicked(self):
@@ -486,9 +501,32 @@ class StitchingWidget(QWidget):
 
         show_info("Intensity adjusted")
 
+    def _on_linear_interpolation_button_clicked(self):
+        if self.image_mosaic.overlaps_interpolated[self.resolution_to_display]:
+            self.image_mosaic.reload_resolution_pyramid_level(
+                self.resolution_to_display
+            )
+
+        self.image_mosaic.interpolate_overlaps(
+            resolution_level=self.resolution_to_display
+        )
+
+        data_for_napari = self.image_mosaic.data_for_napari(
+            self.resolution_to_display
+        )
+
+        self.update_tiles_from_mosaic(data_for_napari)
+
+        show_info("Linear interpolation applied to overlapping regions")
+
     def _on_reset_preview_button_clicked(self):
-        for i, scaled in enumerate(self.image_mosaic.intensity_adjusted):
-            if scaled:
+        for i, (scaled, interpolated) in enumerate(
+            zip(
+                self.image_mosaic.intensity_adjusted,
+                self.image_mosaic.overlaps_interpolated,
+            )
+        ):
+            if scaled or interpolated:
                 self.image_mosaic.reload_resolution_pyramid_level(
                     resolution_level=i
                 )
@@ -563,6 +601,8 @@ class StitchingWidget(QWidget):
         self.image_mosaic.fuse(
             output_path,
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
+            normalise_intensity_percentile=self.percentile_field.value(),
+            interpolate=self.interpolate_overlaps_toggle.isChecked(),
         )
 
         show_info("Fusing complete")

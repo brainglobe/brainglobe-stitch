@@ -50,6 +50,8 @@ class ImageMosaic:
         The tiles in the image.
     tile_names : List[str]
         The names of the image tiles from BigDataViewer.
+    tile_metadata : List[Dict]
+        The metadata for each tile.
     overlaps : Dict[Tuple[int, int], Overlap]
         A dictionary of tile pairs and their overlaps.
     x_y_resolution : float
@@ -82,6 +84,9 @@ class ImageMosaic:
 
         self.scale_factors: Optional[npt.NDArray] = None
         self.intensity_adjusted: List[bool] = [False] * len(
+            self.tiles[0].resolution_pyramid
+        )
+        self.overlaps_interpolated: List[bool] = [False] * len(
             self.tiles[0].resolution_pyramid
         )
 
@@ -378,6 +383,7 @@ class ImageMosaic:
                 )
 
             self.intensity_adjusted[resolution_level] = False
+            self.overlaps_interpolated[resolution_level] = False
 
     def calculate_overlaps(self) -> None:
         """
@@ -509,10 +515,41 @@ class ImageMosaic:
 
         return
 
+    def interpolate_overlaps(self, resolution_level: int) -> None:
+        """
+        Interpolate the overlaps between the tiles at a given resolution level.
+
+        Parameters
+        ----------
+        resolution_level: int
+            The resolution level to interpolate the overlaps at.
+        """
+        tile_shape = self.tiles[0].data_pyramid[resolution_level].shape
+
+        if self.overlaps_interpolated[resolution_level]:
+            print("Overlaps already interpolated at this resolution scale.")
+            return
+
+        for tile_i in self.tiles[:-1]:
+            # Iterate through each neighbour
+            for neighbour_id in tile_i.neighbours:
+                tile_j = self.tiles[neighbour_id]
+                overlap = self.overlaps[(tile_i.id, tile_j.id)]
+
+                overlap.linear_interpolation(resolution_level, tile_shape)
+
+                print(
+                    f"Done interpolating tile {tile_i.id}" f" and {tile_j.id}"
+                )
+
+        self.overlaps_interpolated[resolution_level] = True
+
     def fuse(
         self,
         output_path: Path,
         normalise_intensity: bool = False,
+        normalise_intensity_percentile: int = 80,
+        interpolate: bool = False,
         downscale_factors: Tuple[int, int, int] = (1, 2, 2),
         chunk_shape: Tuple[int, int, int] = (128, 128, 128),
         pyramid_depth: int = 5,
@@ -529,6 +566,10 @@ class ImageMosaic:
             Accepts .zarr and .h5 extensions.#
         normalise_intensity: bool, default: False
             Normalise the intensity differences between tiles.
+        normalise_intensity_percentile: int, default: 80
+            The brightness percentile to use for normalising intensity.
+        interpolate: bool, default: False
+            Interpolate the overlaps between tiles.
         downscale_factors: Tuple[int, int, int], default: (1, 2, 2)
             The factors to downscale the image by in the z, y, x dimensions.
         chunk_shape: Tuple[int, ...], default: (128, 128, 128)
@@ -549,7 +590,14 @@ class ImageMosaic:
         )
 
         if normalise_intensity:
-            self.normalise_intensity(0, 80)
+            self.normalise_intensity(0, normalise_intensity_percentile)
+        elif self.intensity_adjusted[0]:
+            self.reload_resolution_pyramid_level(0)
+
+        if interpolate:
+            self.interpolate_overlaps(0)
+        elif self.overlaps_interpolated[0]:
+            self.reload_resolution_pyramid_level(0)
 
         if output_path.suffix == ".zarr":
             self._fuse_to_zarr(
