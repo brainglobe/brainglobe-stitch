@@ -131,5 +131,5 @@ extras =
 commands =
     pytest -v --color=yes --cov=brainglobe-stitch --cov-report=xml
 deps =
-    napari-dev: git+https://github.com/napari/napari    
+    napari-dev: git+https://github.com/napari/napari
 """
