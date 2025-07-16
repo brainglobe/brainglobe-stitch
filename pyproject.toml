@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "napari>=0.5",
+    "napari>=0.6.1",
     "brainglobe-utils>=0.3.4",
     "h5py",
     "napari-ome-zarr",
