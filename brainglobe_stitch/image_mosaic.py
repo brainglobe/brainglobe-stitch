@@ -500,7 +500,7 @@ class ImageMosaic:
                 median_j = da.percentile(j_overlap.ravel(), percentile)
 
                 curr_scale_factor = (median_i / median_j).compute()
-                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor[0]
+                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor
 
                 # Adjust the tile intensity based on the scale factor
                 tile_j.data_pyramid[resolution_level] = da.multiply(
@@ -1058,7 +1058,7 @@ class ImageMosaic:
             tile_data = tile.data_pyramid[pyramid_level]
             curr_threshold = np.percentile(
                 tile_data[middle_slice_index].ravel(), 99
-            ).compute()[0]
+            ).compute()
             threshold_list = thresholds.get(tile.channel_name, [])
             threshold_list.append(curr_threshold)
             thresholds[tile.channel_name] = threshold_list
