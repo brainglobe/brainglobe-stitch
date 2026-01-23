@@ -1,0 +1,17 @@
+name: Add all new issues to core development project board
+on:
+  issues:
+    types:
+      - opened
+
+jobs:
+  add-to-project:
+    name: Add issue to project
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: https://github.com/orgs/brainglobe/projects/2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
