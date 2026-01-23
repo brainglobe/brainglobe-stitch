@@ -8,8 +8,7 @@ jobs:
   add-to-project:
     name: Add issue to project
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    permissions: write-all
     steps:
       - uses: actions/add-to-project@v1.0.2
         with:
