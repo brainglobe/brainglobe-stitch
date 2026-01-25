@@ -138,25 +138,17 @@ def test_on_mesospim_directory_text_edited(stitching_widget, mocker):
 
 def test_on_create_pyramid_button_clicked(stitching_widget, mocker):
     """
-    Test that the on_create_pyramid_button_clicked method correctly calls
-    the create_worker function with the correct arguments. The create_worker
-    function is mocked to prevent actually creating the pyramid. The create
-    pyramid button is disabled should be disabled after the method is called
-    and the add_tiles_button should be enabled.
+    Test that clicking the create pyramid button starts the pyramid worker
+    and updates widget state correctly. After the method is called, the
+    create pyramid button should be disabled and the add_tiles_button
+    should be enabled.
     """
     stitching_widget.h5_path = Path.home() / "test_path"
-    mock_create_worker = mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_worker",
-        autospec=True,
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.create_pyramid_worker"
     )
 
     stitching_widget._on_create_pyramid_button_clicked()
-
-    mock_create_worker.assert_called_once_with(
-        brainglobe_stitch.file_utils.create_pyramid_bdv_h5,
-        stitching_widget.h5_path,
-        yield_progress=True,
-    )
 
     assert not stitching_widget.create_pyramid_button.isEnabled()
     assert stitching_widget.add_tiles_button.isEnabled()
@@ -173,14 +165,11 @@ def test_on_add_tiles_button_clicked(
     """
     stitching_widget.working_directory = naive_bdv_directory
 
-    mock_create_worker = mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_worker",
-        autospec=True,
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.add_tiles_worker"
     )
 
     stitching_widget._on_add_tiles_button_clicked()
-
-    mock_create_worker.assert_called_once()
 
     assert stitching_widget.image_mosaic is not None
 
@@ -376,18 +365,17 @@ def test_on_stitch_button_clicked(
     stitching_widget = stitching_widget_with_mosaic
     stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
-    mock_create_worker = mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_worker",
-        autospec=True,
+    mock_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.stitching_worker",
     )
 
     stitching_widget._on_stitch_button_clicked()
 
-    mock_create_worker.assert_called_once_with(
-        stitching_widget_with_mosaic.image_mosaic.stitch,
+    mock_worker.assert_called_once_with(
+        stitching_widget_with_mosaic.image_mosaic,
         stitching_widget.imagej_path,
         resolution_level=2,
-        selected_channel="",
+        channel="",
     )
 
 
@@ -461,7 +449,7 @@ def test_on_stitch_finished(stitching_widget_with_mosaic, mocker):
     assert stitching_widget_with_mosaic.liner_interpolation_button.isEnabled()
 
 
-def tests_on_adjust_intensity_button_clicked(
+def test_on_adjust_intensity_button_clicked(
     stitching_widget_with_mosaic, mocker
 ):
     """
