@@ -9,10 +9,10 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 import zarr
-from numcodecs import Blosc
 from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
+from zarr.codecs import BloscCodec
 
 from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
 from brainglobe_stitch.file_utils import (
@@ -499,8 +499,8 @@ class ImageMosaic:
                 median_i = da.percentile(i_overlap.ravel(), percentile)
                 median_j = da.percentile(j_overlap.ravel(), percentile)
 
-                curr_scale_factor = (median_i / median_j).compute()
-                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor[0]
+                curr_scale_factor = float((median_i / median_j).compute())
+                scale_factors[tile_i.id][tile_j.id] = curr_scale_factor
 
                 # Adjust the tile intensity based on the scale factor
                 tile_j.data_pyramid[resolution_level] = da.multiply(
@@ -665,20 +665,19 @@ class ImageMosaic:
         fused_image_shape = (self.num_channels, *fused_image_shape)
         chunk_shape = (self.num_channels, *chunk_shape)
 
-        store = zarr.NestedDirectoryStore(str(output_path))
-        root = zarr.group(store=store)
-        compressor = Blosc(
+        root = zarr.open_group(str(output_path), mode="w")
+        compressor = BloscCodec(
             cname=compression_method,
             clevel=compression_level,
-            shuffle=Blosc.SHUFFLE,
+            shuffle="shuffle",
         )
 
-        fused_image_store = root.create(
+        fused_image_store = root.create_array(
             "0",
             shape=fused_image_shape,
             chunks=chunk_shape,
             dtype="i2",
-            compressor=compressor,
+            compressors=compressor,
         )
 
         # Place the tiles in reverse order of acquisition
@@ -701,12 +700,12 @@ class ImageMosaic:
             downsampled_image = downscale_nearest(prev_resolution, factors)
 
             downsampled_shape = downsampled_image.shape
-            downsampled_store = root.require_dataset(
+            downsampled_store = root.create_array(
                 f"{i}",
                 shape=downsampled_shape,
                 chunks=chunk_shape,
                 dtype="i2",
-                compressor=compressor,
+                compressors=compressor,
             )
             downsampled_image.to_zarr(downsampled_store)
 
@@ -1056,9 +1055,11 @@ class ImageMosaic:
 
         for tile in self.tiles:
             tile_data = tile.data_pyramid[pyramid_level]
-            curr_threshold = np.percentile(
-                tile_data[middle_slice_index].ravel(), 99
-            ).compute()[0]
+            curr_threshold = float(
+                np.percentile(
+                    tile_data[middle_slice_index].ravel(), 99
+                ).compute()
+            )
             threshold_list = thresholds.get(tile.channel_name, [])
             threshold_list.append(curr_threshold)
             thresholds[tile.channel_name] = threshold_list
