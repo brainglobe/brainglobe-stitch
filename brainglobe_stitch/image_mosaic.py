@@ -662,8 +662,13 @@ class ImageMosaic:
             self._generate_metadata_for_zarr(pyramid_depth, downscale_factors)
         )
 
-        fused_image_shape = (self.num_channels, *fused_image_shape)
-        chunk_shape = (self.num_channels, *chunk_shape)
+        # The fused image shape and chunk shape can be np.int64
+        # zarr enforces the shapes to be int, so we need to convert them
+        fused_image_shape_int = tuple(int(dim) for dim in fused_image_shape)
+        chunk_shape_int = tuple(int(dim) for dim in chunk_shape)
+
+        fused_image_shape = (self.num_channels, *fused_image_shape_int)
+        chunk_shape = (self.num_channels, *chunk_shape_int)
 
         root = zarr.open_group(str(output_path), mode="w")
         compressor = BloscCodec(
