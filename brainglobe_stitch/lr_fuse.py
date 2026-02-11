@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import dask.array as da
@@ -11,7 +12,8 @@ from brainglobe_stitch.tile import Tile
 
 
 def register_shutters(
-    image_mosaic: ImageMosaic,
+    image_mosaic_left: ImageMosaic,
+    image_mosaic_right: ImageMosaic,
     pyramid_level: int,
     resolution: npt.NDArray,
 ) -> Dict[int, Tuple[Tile, Tile, sitk.Transform]]:
@@ -35,14 +37,15 @@ def register_shutters(
         containing the left and right tiles and the transform as the value.
     """
     l_r_pairs: Dict[int, List[Tile]] = {}
-    for tile in image_mosaic.tiles:
+    for tile in image_mosaic_left.tiles + image_mosaic_right.tiles:
         l_r_pair = l_r_pairs.get(tile.channel_id, [])
         l_r_pair.append(tile)
         l_r_pairs[tile.channel_id] = l_r_pair
 
     out_dict: Dict[int, Tuple[Tile, Tile, sitk.Transform]] = {}
     for channel_id in l_r_pairs.keys():
-        channel_name = image_mosaic.channel_names[channel_id]
+        # Assumes same channel_id in both which should be the case
+        channel_name = image_mosaic_left.channel_names[channel_id]
         curr_tiles = l_r_pairs[channel_id]
         print(
             f"Registering downsampled left and right images "
@@ -201,9 +204,12 @@ def blend_along_axis(
 
 
 def l_r_fuse(
-    image_mosaic: ImageMosaic,
+    image_mosaic_left: ImageMosaic,
+    image_mosaic_right: ImageMosaic,
     pyramid_level: int = 2,
     order: int = 0,
+    save_result: bool = False,
+    output_path: Path | None = None,
 ) -> ImageMosaic:
     """
     Fuse the images acquired from the left and right shutters of a light-sheet
@@ -218,6 +224,11 @@ def l_r_fuse(
     order: int, optional
         The order of the interpolation to use when transforming the
         left and right images following registration, by default 0.
+    save_result: bool, optional
+        Whether to save the fused image to disk, by default False.
+    output_path: Path | None, optional
+        The path to save the fused image to if `save_result` is True, by
+        default None.
 
     Returns
     -------
@@ -227,20 +238,20 @@ def l_r_fuse(
     resolution = (
         np.array(
             [
-                image_mosaic.z_resolution,
-                image_mosaic.x_y_resolution,
-                image_mosaic.x_y_resolution,
+                image_mosaic_left.z_resolution,
+                image_mosaic_left.x_y_resolution,
+                image_mosaic_left.x_y_resolution,
             ]
         )
-        * image_mosaic.tiles[0].resolution_pyramid[pyramid_level]
+        * image_mosaic_left.tiles[0].resolution_pyramid[pyramid_level]
     )
 
-    transforms = register_shutters(image_mosaic, pyramid_level, resolution)
+    transforms = register_shutters(image_mosaic_left, image_mosaic_right, pyramid_level, resolution)
 
     for channel_id, (left_tile, right_tile, transform) in transforms.items():
         print(
             f"Applying transform for channel "
-            f"{image_mosaic.channel_names[channel_id]}"
+            f"{image_mosaic_left.channel_names[channel_id]}"
         )
         # SimpleITK returns the transform as x, y, z. in physical space
         # Transform back to z, y, x and scale to pixel coordinates
@@ -259,7 +270,13 @@ def l_r_fuse(
             right_tile.data_pyramid[0], left_tile.data_pyramid[0], axis=2
         )
 
-        image_mosaic.tiles.remove(right_tile)
-        image_mosaic.tile_names.remove(right_tile.name)
+        # Need to save here I think, rather than returning the fused mosaic which then fails to save
+        # possibly due to garbage collection of the dask arrays in the tiles?
+        if save_result:
+            assert output_path is not None, "Output path must be provided if save_result is True"
+            da.to_hdf5(output_path, f"/lr_stitched", left_tile.data_pyramid[0])
 
-    return image_mosaic
+        image_mosaic_right.tiles.remove(right_tile)
+        image_mosaic_right.tile_names.remove(right_tile.name)
+
+    return image_mosaic_left
