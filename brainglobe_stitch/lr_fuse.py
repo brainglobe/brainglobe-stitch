@@ -246,7 +246,9 @@ def l_r_fuse(
         * image_mosaic_left.tiles[0].resolution_pyramid[pyramid_level]
     )
 
-    transforms = register_shutters(image_mosaic_left, image_mosaic_right, pyramid_level, resolution)
+    transforms = register_shutters(
+        image_mosaic_left, image_mosaic_right, pyramid_level, resolution
+    )
 
     for channel_id, (left_tile, right_tile, transform) in transforms.items():
         print(
@@ -273,8 +275,10 @@ def l_r_fuse(
         # Need to save here I think, rather than returning the fused mosaic which then fails to save
         # possibly due to garbage collection of the dask arrays in the tiles?
         if save_result:
-            assert output_path is not None, "Output path must be provided if save_result is True"
-            da.to_hdf5(output_path, f"/lr_stitched", left_tile.data_pyramid[0])
+            assert (
+                output_path is not None
+            ), "Output path must be provided if save_result is True"
+            da.to_hdf5(output_path, "/lr_stitched", left_tile.data_pyramid[0])
 
         image_mosaic_right.tiles.remove(right_tile)
         image_mosaic_right.tile_names.remove(right_tile.name)
