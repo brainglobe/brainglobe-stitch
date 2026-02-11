@@ -703,16 +703,17 @@ class ImageMosaic:
 
             factors = (1, *downscale_factors)
             downsampled_image = downscale_nearest(prev_resolution, factors)
+            downsampled_image = downsampled_image.rechunk(chunks=chunk_shape)
 
-            downsampled_shape = downsampled_image.shape
-            downsampled_store = root.create_array(
-                f"{i}",
-                shape=downsampled_shape,
-                chunks=chunk_shape,
-                dtype="i2",
-                compressors=compressor,
+            downsampled_image.to_zarr(
+                str(output_path),
+                component=str(i),
+                zarr_read_kwargs={
+                    "overwrite": True,
+                    "compressor": compressor,
+                    "dimension_separator": "/",
+                },
             )
-            downsampled_image.to_zarr(downsampled_store)
 
             print(f"Done resolution {i}")
 
