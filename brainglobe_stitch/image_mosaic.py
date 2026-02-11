@@ -708,10 +708,12 @@ class ImageMosaic:
             downsampled_image.to_zarr(
                 str(output_path),
                 component=str(i),
-                zarr_read_kwargs={
+                zarr_array_kwargs={
+                    "compressors": compressor,
                     "overwrite": True,
-                    "compressor": compressor,
-                    "dimension_separator": "/",
+                },
+                zarr_read_kwargs={
+                    "mode": "r+",
                 },
             )
 
