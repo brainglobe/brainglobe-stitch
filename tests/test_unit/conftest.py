@@ -301,14 +301,17 @@ def fused_image(image_mosaic, test_constants):
         (image_mosaic.num_channels, *test_constants["EXPECTED_FUSED_SHAPE"]),
         dtype=np.int16,
     )
+    tile_positions = test_constants["EXPECTED_TILE_POSITIONS"]
     z_size, y_size, x_size = test_constants["TILE_SIZE"]
 
-    for tile in image_mosaic.tiles[-1::-1]:
+    for tile, position in zip(
+        image_mosaic.tiles[-1::-1], tile_positions[-1::-1]
+    ):
         test_image[
             tile.channel_id,
-            tile.position[0] : tile.position[0] + z_size,
-            tile.position[1] : tile.position[1] + y_size,
-            tile.position[2] : tile.position[2] + x_size,
+            position[0] : position[0] + z_size,
+            position[1] : position[1] + y_size,
+            position[2] : position[2] + x_size,
         ] = tile.data_pyramid[0].compute()
 
     return test_image
