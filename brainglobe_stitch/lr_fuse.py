@@ -204,11 +204,10 @@ def blend_along_axis(
 
 
 def l_r_fuse(
-    image_mosaic_left: ImageMosaic,
-    image_mosaic_right: ImageMosaic,
+    left_path: Path,
+    right_path: Path,
     pyramid_level: int = 2,
     order: int = 0,
-    save_result: bool = False,
     output_path: Path | None = None,
 ) -> ImageMosaic:
     """
@@ -217,8 +216,10 @@ def l_r_fuse(
 
     Parameters
     ----------
-    image_mosaic : ImageMosaic
-        The image mosaic object containing the tiles to fuse.
+    left_path : Path
+        The path to the stack illuminated by the left sheet.
+    right_path : Path
+        The path to the stack illuminated by the right sheet.
     pyramid_level : int, optional
         The pyramid level to use for registration, by default 2.
     order: int, optional
@@ -227,7 +228,7 @@ def l_r_fuse(
     save_result: bool, optional
         Whether to save the fused image to disk, by default False.
     output_path: Path | None, optional
-        The path to save the fused image to if `save_result` is True, by
+        The path to save the fused image, None if data should not be saved, by
         default None.
 
     Returns
@@ -235,6 +236,10 @@ def l_r_fuse(
     ImageMosaic
         The image mosaic object containing the fused image.
     """
+
+    image_mosaic_left = ImageMosaic(left_path)
+    image_mosaic_right = ImageMosaic(right_path)
+
     resolution = (
         np.array(
             [
@@ -272,13 +277,8 @@ def l_r_fuse(
             right_tile.data_pyramid[0], left_tile.data_pyramid[0], axis=2
         )
 
-        # Need to save here I think, rather than returning the fused mosaic which then fails to save
-        # possibly due to garbage collection of the dask arrays in the tiles?
-        if save_result:
-            assert (
-                output_path is not None
-            ), "Output path must be provided if save_result is True"
-            da.to_hdf5(output_path, "/lr_stitched", left_tile.data_pyramid[0])
+        if output_path is not None:
+            da.to_hdf5(output_path, "/lr_fused", left_tile.data_pyramid[0])
 
         image_mosaic_right.tiles.remove(right_tile)
         image_mosaic_right.tile_names.remove(right_tile.name)
