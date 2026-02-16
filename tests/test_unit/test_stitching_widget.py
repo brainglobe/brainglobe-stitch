@@ -6,7 +6,6 @@ import napari.layers
 import numpy as np
 import pytest
 
-import brainglobe_stitch
 from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.stitching_widget import (
     StitchingWidget,
@@ -144,9 +143,7 @@ def test_on_create_pyramid_button_clicked(stitching_widget, mocker):
     should be enabled.
     """
     stitching_widget.h5_path = Path.home() / "test_path"
-    mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_pyramid_worker"
-    )
+    mocker.patch("brainglobe_stitch.stitching_widget.create_pyramid_worker")
 
     stitching_widget._on_create_pyramid_button_clicked()
 
@@ -165,9 +162,7 @@ def test_on_add_tiles_button_clicked(
     """
     stitching_widget.working_directory = naive_bdv_directory
 
-    mocker.patch(
-        "brainglobe_stitch.stitching_widget.add_tiles_worker"
-    )
+    mocker.patch("brainglobe_stitch.stitching_widget.add_tiles_worker")
 
     stitching_widget._on_add_tiles_button_clicked()
 

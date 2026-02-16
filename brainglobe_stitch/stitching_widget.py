@@ -71,12 +71,14 @@ def add_tiles_from_mosaic(
 def add_tiles_worker(napari_data, image_mosaic):
     yield from add_tiles_from_mosaic(napari_data, image_mosaic)
 
+
 @thread_worker(
     progress={"total": 100, "desc": "Creating resolution pyramid"},
 )
 def create_pyramid_worker(h5_path):
     for progress in create_pyramid_bdv_h5(h5_path):
         yield progress
+
 
 @thread_worker(
     progress={"total": 0, "desc": "Stitching tiles"},
