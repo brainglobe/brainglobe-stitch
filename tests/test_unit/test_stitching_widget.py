@@ -376,7 +376,7 @@ def test_on_stitch_button_clicked(
     )
 
     mock_worker_instance.start.assert_called_once()
-        
+
 
 def test_on_stitch_button_clicked_no_image_mosaic(
     stitching_widget, test_constants, mocker

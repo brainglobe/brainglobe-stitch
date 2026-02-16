@@ -91,6 +91,7 @@ def stitching_worker(image_mosaic, imagej_path, resolution_level, channel):
     )
     return True
 
+
 @thread_worker(
     progress={"total": 0, "desc": "Fusing tiles"},
 )
@@ -108,6 +109,7 @@ def fuse_worker(
         interpolate=interpolate,
     )
     return True
+
 
 class StitchingWidget(QWidget):
     """
@@ -337,7 +339,7 @@ class StitchingWidget(QWidget):
 
         self.layout().addWidget(self.progress_bar)
         self.progress_bar.setVisible(False)
-    
+
     def _activate_activity_dock(self):
         self._viewer.window._status_bar._toggle_activity_dock(True)
 
