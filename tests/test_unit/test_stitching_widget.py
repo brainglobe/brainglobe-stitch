@@ -365,19 +365,23 @@ def test_on_stitch_button_clicked(
     stitching_widget = stitching_widget_with_mosaic
     stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
+    mock_worker_instance = mocker.Mock()
     mock_worker = mocker.patch(
         "brainglobe_stitch.stitching_widget.stitching_worker",
+        return_value=mock_worker_instance,
     )
 
     stitching_widget._on_stitch_button_clicked()
 
     mock_worker.assert_called_once_with(
-        stitching_widget_with_mosaic.image_mosaic,
+        stitching_widget.image_mosaic,
         stitching_widget.imagej_path,
         resolution_level=2,
         channel="",
     )
 
+    mock_worker_instance.start.assert_called_once()
+        
 
 def test_on_stitch_button_clicked_no_image_mosaic(
     stitching_widget, test_constants, mocker
@@ -640,15 +644,15 @@ def test_on_open_dialog_output_clicked_cancelled(stitching_widget, mocker):
 def test_on_fuse_button_clicked(
     stitching_widget_with_mosaic, mocker, file_name
 ):
-    mock_display_info = mocker.patch(
-        "brainglobe_stitch.stitching_widget.display_info",
-        autospec=True,
-    )
     stitching_widget = stitching_widget_with_mosaic
 
-    mock_fuse = mocker.patch(
-        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
-        autospec=True,
+    mock_worker_instance = mocker.Mock()
+    mock_worker_instance.finished = mocker.Mock()
+    mock_worker_instance.start = mocker.Mock()
+
+    mock_fuse_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.fuse_worker",
+        return_value=mock_worker_instance,
     )
 
     output_path = stitching_widget.working_directory / file_name
@@ -656,19 +660,34 @@ def test_on_fuse_button_clicked(
 
     stitching_widget._on_fuse_button_clicked()
 
-    mock_fuse.assert_called_once_with(
+    mock_fuse_worker.assert_called_once_with(
         stitching_widget.image_mosaic,
         output_path,
         normalise_intensity=False,
-        normalise_intensity_percentile=80,
+        percentile=80,
         interpolate=False,
     )
-    mock_display_info.assert_called_once_with(
-        stitching_widget,
-        "Info",
-        f"Fused image saved to "
-        f"{stitching_widget.working_directory / file_name}",
+
+    mock_worker_instance.start.assert_called_once()
+
+    assert stitching_widget._current_output_path == output_path
+
+
+def test_on_fuse_finished(stitching_widget_with_mosaic, mocker):
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info"
     )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+
+    stitching_widget_with_mosaic._current_output_path = Path("test.h5")
+
+    stitching_widget_with_mosaic._on_fuse_finished()
+
+    mock_show_info.assert_called_once_with("Fusing complete")
+    mock_display_info.assert_called_once()
 
 
 def test_on_fuse_button_clicked_no_file_name(

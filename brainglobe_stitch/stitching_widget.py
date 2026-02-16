@@ -89,6 +89,24 @@ def stitching_worker(image_mosaic, imagej_path, resolution_level, channel):
     )
     return True
 
+@thread_worker(
+    progress={"total": 0, "desc": "Fusing tiles"},
+)
+def fuse_worker(
+    image_mosaic,
+    output_path,
+    normalise_intensity,
+    percentile,
+    interpolate,
+):
+    image_mosaic.fuse(
+        output_path,
+        normalise_intensity=normalise_intensity,
+        normalise_intensity_percentile=percentile,
+        interpolate=interpolate,
+    )
+    return True
+
 class StitchingWidget(QWidget):
     """
     napari widget for stitching large tiled 3d images.
@@ -317,7 +335,12 @@ class StitchingWidget(QWidget):
 
         self.layout().addWidget(self.progress_bar)
         self.progress_bar.setVisible(False)
+    
+    def _activate_activity_dock(self):
         self._viewer.window._status_bar._toggle_activity_dock(True)
+
+    def _deactivate_activity_dock(self):
+        self._viewer.window._status_bar._toggle_activity_dock(False)
 
     def _on_open_file_dialog_clicked(self) -> None:
         """
@@ -353,6 +376,8 @@ class StitchingWidget(QWidget):
         self.progress_bar.setRange(0, 100)
 
         worker = create_pyramid_worker(self.h5_path)
+        self._activate_activity_dock()
+
         worker.yielded.connect(self.progress_bar.setValue)
         worker.finished.connect(self._create_pyramid_finished)
         worker.start()
@@ -366,6 +391,7 @@ class StitchingWidget(QWidget):
         self.create_pyramid_button.setEnabled(False)
         self.progress_bar.reset()
         self.progress_bar.setVisible(False)
+        self._deactivate_activity_dock()
 
     def _on_add_tiles_button_clicked(self) -> None:
         """
@@ -482,6 +508,7 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.liner_interpolation_button.setEnabled(False)
         self.reset_preview_button.setEnabled(False)
+        self._activate_activity_dock()
         worker.finished.connect(self._on_stitch_finished)
         worker.start()
 
@@ -498,6 +525,7 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(True)
         self.liner_interpolation_button.setEnabled(True)
         self.reset_preview_button.setEnabled(True)
+        self._deactivate_activity_dock()
 
     def _on_adjust_intensity_button_clicked(self):
         if self.image_mosaic.intensity_adjusted[self.resolution_to_display]:
@@ -615,15 +643,23 @@ class StitchingWidget(QWidget):
                 )
                 return
 
-        self.image_mosaic.fuse(
+        worker = fuse_worker(
+            self.image_mosaic,
             output_path,
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
-            normalise_intensity_percentile=self.percentile_field.value(),
+            percentile=self.percentile_field.value(),
             interpolate=self.interpolate_overlaps_toggle.isChecked(),
         )
+        self._current_output_path = output_path
+        self._activate_activity_dock()
+        worker.finished.connect(self._on_fuse_finished)
+        worker.start()
 
+    def _on_fuse_finished(self):
+        output_path = self._current_output_path
         show_info("Fusing complete")
         display_info(self, "Info", f"Fused image saved to {output_path}")
+        self._deactivate_activity_dock()
 
     def check_imagej_path(self) -> None:
         """
