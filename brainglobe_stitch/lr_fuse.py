@@ -7,7 +7,11 @@ import numpy.typing as npt
 import SimpleITK as sitk
 from dask_image.ndinterp import affine_transform as da_affine_transform
 
-from brainglobe_stitch.image_mosaic import ImageMosaic
+
+from brainglobe_stitch.image_mosaic import (
+    ImageMosaic,
+    blend_along_axis,
+)
 from brainglobe_stitch.tile import Tile
 
 
@@ -19,12 +23,15 @@ def register_shutters(
 ) -> Dict[int, Tuple[Tile, Tile, sitk.Transform]]:
     """
     Register the images acquired from the left and right shutters from a
-    light-sheet microscope.
+    light-sheet microscope when each side is contained in a separate ImageMosaic
+    object.
 
     Parameters
     ----------
-    image_mosaic : ImageMosaic
-        The image mosaic object containing the tiles to register.
+    image_mosaic_left : ImageMosaic
+        The image mosaic object containing the left shutter tiles.
+    image_mosaic_right : ImageMosaic
+        The image mosaic object containing the right shutter tiles.
     pyramid_level : int
         The pyramid level to use for registration.
     resolution : npt.NDArray
@@ -96,113 +103,6 @@ def register_shutters(
     return out_dict
 
 
-def blend_along_axis(
-    im1: da.Array,
-    im2: da.Array,
-    axis=2,
-    blending_center_coord=None,
-    pixel_width=None,
-    weight_at_pixel_width=0.95,
-    weight_threshold=1e-3,
-) -> da.Array:
-    """Sigmoidal blending of two arrays of equal shape along an axis
-
-    Parameters
-    ----------
-    im1 : da.Array
-        input array with values to keep at starting coordinates
-    im2 : da.Array
-        input array with values to keep at ending coordinates
-    axis : int
-        axis along which to blend the two input arrays
-    blending_center_coord : float, optional
-        coordinate representing the blending center.
-        If None, the center along the axis is used.
-    pixel_width : float, optional
-        width of the blending function in pixels.
-        If None, 5% of the array's extent along the axis is used.
-    weight_at_pixel_width : float, optional
-        weight value at distance `pixel_width` to `blending_center_coord`.
-    weight_threshold : float, optional
-        below this weight threshold the resulting array is just a copy of
-        the input array with the highest weight. This is faster and more
-        memory efficient.
-
-    Returns
-    -------
-    blended_array : da.Array
-        blended result of same shape as input arrays
-
-    Notes
-    -----
-    This function could require less memory by blending plane by plane
-    along the axis.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from scipy import ndimage
-    >>> im = da.random.randint(0, 1000, [7, 9, 9])
-    >>> im = ndimage.zoom(im, [21]*3, order=1)
-    >>> degrad = da.exp(-0.01 * da.arange(len(im)))
-    >>> im_l = (im.T * degrad).T.astype(np.uint16)
-    >>> im_r = (im.T * degrad[::-1]).T.astype(np.uint16)
-    >>> blend_along_axis(im_l, im_r, axis=0, pixel_width=5)
-
-    Author - Marvin Albert
-    Code taken from: https://gist.github.com/m-albert/bb4fa38436760c4e6d171239fb3e16c4
-    """
-
-    # use center coordinate along blending axis
-    if blending_center_coord is None:
-        blending_center_coord = (im1.shape[axis] - 1) / 2
-
-    # use 10% of extent along blending axis
-    if pixel_width is None:
-        pixel_width = im1.shape[axis] / 20
-
-    shape = im1.shape
-
-    # define sigmoidal blending function
-    a = (
-        -np.log((1 - weight_at_pixel_width) / weight_at_pixel_width)
-        / pixel_width
-    )
-    sigmoid = 1 / (
-        1 + np.exp(-a * (np.arange(shape[axis]) - blending_center_coord))
-    )
-    sigmoid = sigmoid.astype(np.float32)
-
-    # initialise output array
-    out = da.zeros_like(im1, chunks=im1.chunksize)
-
-    # define sub threshold regions
-    mask1_index = np.searchsorted(sigmoid, weight_threshold)
-    mask1_slices = [slice(None)] * len(shape)
-    mask1_slices[axis] = slice(None, mask1_index)
-
-    # Assume log is symmetric around center
-    mask2_index = im2.shape[axis] - mask1_index
-    mask2_slices = [slice(None)] * len(shape)
-    mask2_slices[axis] = slice(mask2_index, None)
-    maskb_slices = [slice(None)] * len(shape)
-    maskb_slices[axis] = slice(mask1_index, mask2_index)
-
-    mask1 = tuple(mask1_slices)
-    mask2 = tuple(mask2_slices)
-    maskb = tuple(maskb_slices)
-    # copy input arrays in sub threshold regions
-    out[mask1] = im1[mask1]
-    out[mask2] = im2[mask2]
-
-    # blend
-    out[maskb] = (1 - sigmoid[maskb[axis]]) * im1[maskb] + sigmoid[
-        maskb[axis]
-    ] * im2[maskb]
-
-    return out
-
-
 def l_r_fuse(
     left_path: Path,
     right_path: Path,
@@ -212,7 +112,8 @@ def l_r_fuse(
 ) -> ImageMosaic:
     """
     Fuse the images acquired from the left and right shutters of a light-sheet
-    microscope.
+    microscope when each side is contained in a separate hdf5 file.
+    object.
 
     Parameters
     ----------
