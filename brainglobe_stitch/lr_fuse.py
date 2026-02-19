@@ -22,8 +22,8 @@ def register_shutters(
 ) -> Dict[int, Tuple[Tile, Tile, sitk.Transform]]:
     """
     Register the images acquired from the left and right shutters from a
-    light-sheet microscope when each side is contained in a separate ImageMosaic
-    object.
+    light-sheet microscope when each side is contained in a
+    separate ImageMosaic object.
 
     Parameters
     ----------
@@ -110,9 +110,9 @@ def l_r_fuse(
     output_path: Path | None = None,
 ) -> ImageMosaic:
     """
-    Fuse the images acquired from the left and right shutters of a light-sheet
-    microscope when each side is contained in a separate hdf5 file.
-    object.
+    Fuse the images acquired from the left and right shutters of a
+    light-sheet microscope when each side is contained in a
+    separate hdf5 file.
 
     Parameters
     ----------
@@ -128,8 +128,8 @@ def l_r_fuse(
     save_result: bool, optional
         Whether to save the fused image to disk, by default False.
     output_path: Path | None, optional
-        The path to save the fused image, None if data should not be saved, by
-        default None.
+        The path to save the fused image, None if data should not be saved,
+        by default None.
 
     Returns
     -------

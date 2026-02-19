@@ -1424,9 +1424,10 @@ class ImageMosaic:
         order: int = 0,
     ) -> None:
         """
-        Fuse the images acquired from the left and right shutters of a light-sheet
-        microscope. Assumes data contains one tile per illumation side and both
-        sides are contained in a single ImageMosaic object.
+        Fuse the images acquired from the left and right shutters of a
+        light-sheet microscope. Assumes data contains one tile per
+        illumation side and both sides are contained in a single ImageMosaic
+        object.
 
         Parameters
         ----------
