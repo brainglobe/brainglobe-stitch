@@ -8,11 +8,11 @@ import h5py
 import napari.layers
 import numpy as np
 import numpy.typing as npt
-from brainglobe_utils.qtpy.dialog import display_info, display_warning
 from brainglobe_utils.qtpy.logo import header_widget
 from napari.qt.threading import create_worker
 from napari.utils.notifications import show_info, show_warning
 from napari.viewer import Viewer
+from qt_niu.dialog import display_info, display_warning
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,

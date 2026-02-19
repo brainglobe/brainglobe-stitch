@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import dask.array as da
@@ -6,23 +7,30 @@ import numpy.typing as npt
 import SimpleITK as sitk
 from dask_image.ndinterp import affine_transform as da_affine_transform
 
-from brainglobe_stitch.image_mosaic import ImageMosaic
+from brainglobe_stitch.image_mosaic import (
+    ImageMosaic,
+    blend_along_axis,
+)
 from brainglobe_stitch.tile import Tile
 
 
 def register_shutters(
-    image_mosaic: ImageMosaic,
+    image_mosaic_left: ImageMosaic,
+    image_mosaic_right: ImageMosaic,
     pyramid_level: int,
     resolution: npt.NDArray,
 ) -> Dict[int, Tuple[Tile, Tile, sitk.Transform]]:
     """
     Register the images acquired from the left and right shutters from a
-    light-sheet microscope.
+    light-sheet microscope when each side is contained in a
+    separate ImageMosaic object.
 
     Parameters
     ----------
-    image_mosaic : ImageMosaic
-        The image mosaic object containing the tiles to register.
+    image_mosaic_left : ImageMosaic
+        The image mosaic object containing the left shutter tiles.
+    image_mosaic_right : ImageMosaic
+        The image mosaic object containing the right shutter tiles.
     pyramid_level : int
         The pyramid level to use for registration.
     resolution : npt.NDArray
@@ -35,14 +43,15 @@ def register_shutters(
         containing the left and right tiles and the transform as the value.
     """
     l_r_pairs: Dict[int, List[Tile]] = {}
-    for tile in image_mosaic.tiles:
+    for tile in image_mosaic_left.tiles + image_mosaic_right.tiles:
         l_r_pair = l_r_pairs.get(tile.channel_id, [])
         l_r_pair.append(tile)
         l_r_pairs[tile.channel_id] = l_r_pair
 
     out_dict: Dict[int, Tuple[Tile, Tile, sitk.Transform]] = {}
     for channel_id in l_r_pairs.keys():
-        channel_name = image_mosaic.channel_names[channel_id]
+        # Assumes same channel_id in both which should be the case
+        channel_name = image_mosaic_left.channel_names[channel_id]
         curr_tiles = l_r_pairs[channel_id]
         print(
             f"Registering downsampled left and right images "
@@ -93,154 +102,63 @@ def register_shutters(
     return out_dict
 
 
-def blend_along_axis(
-    im1: da.Array,
-    im2: da.Array,
-    axis=2,
-    blending_center_coord=None,
-    pixel_width=None,
-    weight_at_pixel_width=0.95,
-    weight_threshold=1e-3,
-) -> da.Array:
-    """Sigmoidal blending of two arrays of equal shape along an axis
-
-    Parameters
-    ----------
-    im1 : da.Array
-        input array with values to keep at starting coordinates
-    im2 : da.Array
-        input array with values to keep at ending coordinates
-    axis : int
-        axis along which to blend the two input arrays
-    blending_center_coord : float, optional
-        coordinate representing the blending center.
-        If None, the center along the axis is used.
-    pixel_width : float, optional
-        width of the blending function in pixels.
-        If None, 5% of the array's extent along the axis is used.
-    weight_at_pixel_width : float, optional
-        weight value at distance `pixel_width` to `blending_center_coord`.
-    weight_threshold : float, optional
-        below this weight threshold the resulting array is just a copy of
-        the input array with the highest weight. This is faster and more
-        memory efficient.
-
-    Returns
-    -------
-    blended_array : da.Array
-        blended result of same shape as input arrays
-
-    Notes
-    -----
-    This function could require less memory by blending plane by plane
-    along the axis.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from scipy import ndimage
-    >>> im = da.random.randint(0, 1000, [7, 9, 9])
-    >>> im = ndimage.zoom(im, [21]*3, order=1)
-    >>> degrad = da.exp(-0.01 * da.arange(len(im)))
-    >>> im_l = (im.T * degrad).T.astype(np.uint16)
-    >>> im_r = (im.T * degrad[::-1]).T.astype(np.uint16)
-    >>> blend_along_axis(im_l, im_r, axis=0, pixel_width=5)
-
-    Author - Marvin Albert
-    Code taken from: https://gist.github.com/m-albert/bb4fa38436760c4e6d171239fb3e16c4
-    """
-
-    # use center coordinate along blending axis
-    if blending_center_coord is None:
-        blending_center_coord = (im1.shape[axis] - 1) / 2
-
-    # use 10% of extent along blending axis
-    if pixel_width is None:
-        pixel_width = im1.shape[axis] / 20
-
-    shape = im1.shape
-
-    # define sigmoidal blending function
-    a = (
-        -np.log((1 - weight_at_pixel_width) / weight_at_pixel_width)
-        / pixel_width
-    )
-    sigmoid = 1 / (
-        1 + np.exp(-a * (np.arange(shape[axis]) - blending_center_coord))
-    )
-    sigmoid = sigmoid.astype(np.float32)
-
-    # initialise output array
-    out = da.zeros_like(im1, chunks=im1.chunksize)
-
-    # define sub threshold regions
-    mask1_index = np.searchsorted(sigmoid, weight_threshold)
-    mask1_slices = [slice(None)] * len(shape)
-    mask1_slices[axis] = slice(None, mask1_index)
-
-    # Assume log is symmetric around center
-    mask2_index = im2.shape[axis] - mask1_index
-    mask2_slices = [slice(None)] * len(shape)
-    mask2_slices[axis] = slice(mask2_index, None)
-    maskb_slices = [slice(None)] * len(shape)
-    maskb_slices[axis] = slice(mask1_index, mask2_index)
-
-    mask1 = tuple(mask1_slices)
-    mask2 = tuple(mask2_slices)
-    maskb = tuple(maskb_slices)
-    # copy input arrays in sub threshold regions
-    out[mask1] = im1[mask1]
-    out[mask2] = im2[mask2]
-
-    # blend
-    out[maskb] = (1 - sigmoid[maskb[axis]]) * im1[maskb] + sigmoid[
-        maskb[axis]
-    ] * im2[maskb]
-
-    return out
-
-
 def l_r_fuse(
-    image_mosaic: ImageMosaic,
+    left_path: Path,
+    right_path: Path,
     pyramid_level: int = 2,
     order: int = 0,
+    output_path: Path | None = None,
 ) -> ImageMosaic:
     """
-    Fuse the images acquired from the left and right shutters of a light-sheet
-    microscope.
+    Fuse the images acquired from the left and right shutters of a
+    light-sheet microscope when each side is contained in a
+    separate hdf5 file.
 
     Parameters
     ----------
-    image_mosaic : ImageMosaic
-        The image mosaic object containing the tiles to fuse.
+    left_path : Path
+        The path to the stack illuminated by the left sheet.
+    right_path : Path
+        The path to the stack illuminated by the right sheet.
     pyramid_level : int, optional
         The pyramid level to use for registration, by default 2.
     order: int, optional
         The order of the interpolation to use when transforming the
         left and right images following registration, by default 0.
+    save_result: bool, optional
+        Whether to save the fused image to disk, by default False.
+    output_path: Path | None, optional
+        The path to save the fused image, None if data should not be saved,
+        by default None.
 
     Returns
     -------
     ImageMosaic
         The image mosaic object containing the fused image.
     """
+
+    image_mosaic_left = ImageMosaic(left_path)
+    image_mosaic_right = ImageMosaic(right_path)
+
     resolution = (
         np.array(
             [
-                image_mosaic.z_resolution,
-                image_mosaic.x_y_resolution,
-                image_mosaic.x_y_resolution,
+                image_mosaic_left.z_resolution,
+                image_mosaic_left.x_y_resolution,
+                image_mosaic_left.x_y_resolution,
             ]
         )
-        * image_mosaic.tiles[0].resolution_pyramid[pyramid_level]
+        * image_mosaic_left.tiles[0].resolution_pyramid[pyramid_level]
     )
 
-    transforms = register_shutters(image_mosaic, pyramid_level, resolution)
+    transforms = register_shutters(
+        image_mosaic_left, image_mosaic_right, pyramid_level, resolution
+    )
 
     for channel_id, (left_tile, right_tile, transform) in transforms.items():
         print(
             f"Applying transform for channel "
-            f"{image_mosaic.channel_names[channel_id]}"
+            f"{image_mosaic_left.channel_names[channel_id]}"
         )
         # SimpleITK returns the transform as x, y, z. in physical space
         # Transform back to z, y, x and scale to pixel coordinates
@@ -259,7 +177,10 @@ def l_r_fuse(
             right_tile.data_pyramid[0], left_tile.data_pyramid[0], axis=2
         )
 
-        image_mosaic.tiles.remove(right_tile)
-        image_mosaic.tile_names.remove(right_tile.name)
+        if output_path is not None:
+            da.to_hdf5(output_path, "/lr_fused", left_tile.data_pyramid[0])
 
-    return image_mosaic
+        image_mosaic_right.tiles.remove(right_tile)
+        image_mosaic_right.tile_names.remove(right_tile.name)
+
+    return image_mosaic_left
