@@ -7,7 +7,6 @@ import numpy.typing as npt
 import SimpleITK as sitk
 from dask_image.ndinterp import affine_transform as da_affine_transform
 
-
 from brainglobe_stitch.image_mosaic import (
     ImageMosaic,
     blend_along_axis,

@@ -9,15 +9,15 @@ import dask.array as da
 import h5py
 import numpy as np
 import numpy.typing as npt
+import SimpleITK as sitk
 import tifffile
 import zarr
-from dask_image.ndinterp import affine_transform as da_affine_transform
 from dask.diagnostics import ProgressBar
+from dask_image.ndinterp import affine_transform as da_affine_transform
 from numcodecs import Blosc
 from ome_zarr.dask_utils import downscale_nearest
 from ome_zarr.writer import write_multiscales_metadata
 from rich.progress import Progress
-import SimpleITK as sitk
 
 from brainglobe_stitch.big_stitcher_bridge import run_big_stitcher
 from brainglobe_stitch.file_utils import (
