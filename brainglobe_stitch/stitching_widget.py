@@ -1,8 +1,8 @@
 import shutil
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import warnings
 
 import dask.array as da
 import h5py
