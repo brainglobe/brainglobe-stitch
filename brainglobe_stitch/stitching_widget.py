@@ -2,6 +2,7 @@ import shutil
 from collections.abc import Generator
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import warnings
 
 import dask.array as da
 import h5py
@@ -339,10 +340,14 @@ class StitchingWidget(QWidget):
         self.progress_bar.setVisible(False)
     
     def _activate_activity_dock(self):
-        self._viewer.window._status_bar._toggle_activity_dock(True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            self._viewer.window._status_bar._toggle_activity_dock(True)
 
     def _deactivate_activity_dock(self):
-        self._viewer.window._status_bar._toggle_activity_dock(False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            self._viewer.window._status_bar._toggle_activity_dock(False)
 
     def _on_open_file_dialog_clicked(self) -> None:
         """
