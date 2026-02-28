@@ -12,8 +12,8 @@ from brainglobe_stitch.stitching_widget import (
     add_tiles_from_mosaic,
     add_tiles_worker,
     create_pyramid_worker,
-    stitching_worker,
     fuse_worker,
+    stitching_worker,
 )
 
 
