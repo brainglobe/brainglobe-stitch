@@ -51,7 +51,7 @@ dev = [
   "pytest-cov",
   "pytest-mock",
   "pytest-qt",
-  "napari[all]",
+  "napari[all]>=0.6.1",
   "coverage",
   "tox",
   "pooch",
