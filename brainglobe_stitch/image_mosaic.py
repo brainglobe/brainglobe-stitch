@@ -708,13 +708,9 @@ class ImageMosaic:
             downsampled_image.to_zarr(
                 str(output_path),
                 component=str(i),
-                zarr_array_kwargs={
-                    "compressors": compressor,
-                    "overwrite": True,
-                },
-                zarr_read_kwargs={
-                    "mode": "r+",
-                },
+                compressors=compressor,
+                overwrite=True,
+                mode="r+",
             )
 
             print(f"Done resolution {i}")
