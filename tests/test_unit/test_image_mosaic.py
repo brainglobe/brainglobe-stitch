@@ -569,12 +569,12 @@ def test_fuse_to_zarr(image_mosaic, test_constants, fused_image):
     )
 
     assert output_file.exists()
-    test_store = zarr.NestedDirectoryStore(str(output_file))
-    root = zarr.group(store=test_store)
+    root = zarr.open_group(str(output_file), mode="r")
 
-    assert root.attrs["multiscales"] is not None
-    assert root.attrs["multiscales"][0]["axes"] is not None
-    assert len(root.attrs["multiscales"][0]["datasets"]) == pyramid_depth
+    multiscales = root.attrs["ome"]["multiscales"]
+    assert multiscales is not None
+    assert multiscales[0]["axes"] is not None
+    assert len(multiscales[0]["datasets"]) == pyramid_depth
     assert root.attrs["omero"] is not None
     assert len(root.attrs["omero"]["channels"]) == image_mosaic.num_channels
 
