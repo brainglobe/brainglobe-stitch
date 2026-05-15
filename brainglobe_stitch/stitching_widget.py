@@ -1,4 +1,5 @@
 import shutil
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -10,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from brainglobe_utils.qtpy.logo import header_widget
 from napari import Viewer
-from napari.qt.threading import create_worker
+from napari.qt import thread_worker
 from napari.utils.notifications import show_info, show_warning
 from qt_niu.dialog import display_info, display_warning
 from qtpy.QtWidgets import (
@@ -65,6 +66,50 @@ def add_tiles_from_mosaic(
         tile_layer.translate = tile_position
 
         yield tile_layer
+
+
+@thread_worker
+def add_tiles_worker(napari_data, image_mosaic):
+    yield from add_tiles_from_mosaic(napari_data, image_mosaic)
+
+
+@thread_worker(
+    progress={"total": 100, "desc": "Creating resolution pyramid"},
+)
+def create_pyramid_worker(h5_path):
+    for progress in create_pyramid_bdv_h5(h5_path):
+        yield progress
+
+
+@thread_worker(
+    progress={"total": 0, "desc": "Stitching tiles"},
+)
+def stitching_worker(image_mosaic, imagej_path, resolution_level, channel):
+    image_mosaic.stitch(
+        imagej_path,
+        resolution_level=resolution_level,
+        selected_channel=channel,
+    )
+    return True
+
+
+@thread_worker(
+    progress={"total": 0, "desc": "Fusing tiles"},
+)
+def fuse_worker(
+    image_mosaic,
+    output_path,
+    normalise_intensity,
+    percentile,
+    interpolate,
+):
+    image_mosaic.fuse(
+        output_path,
+        normalise_intensity=normalise_intensity,
+        normalise_intensity_percentile=percentile,
+        interpolate=interpolate,
+    )
+    return True
 
 
 class StitchingWidget(QWidget):
@@ -296,6 +341,16 @@ class StitchingWidget(QWidget):
         self.layout().addWidget(self.progress_bar)
         self.progress_bar.setVisible(False)
 
+    def _activate_activity_dock(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            self._viewer.window._status_bar._toggle_activity_dock(True)
+
+    def _deactivate_activity_dock(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            self._viewer.window._status_bar._toggle_activity_dock(False)
+
     def _on_open_file_dialog_clicked(self) -> None:
         """
         Open a file dialog to select the mesoSPIM directory.
@@ -329,11 +384,9 @@ class StitchingWidget(QWidget):
         self.progress_bar.setValue(0)
         self.progress_bar.setRange(0, 100)
 
-        worker = create_worker(
-            create_pyramid_bdv_h5,
-            self.h5_path,
-            yield_progress=True,
-        )
+        worker = create_pyramid_worker(self.h5_path)
+        self._activate_activity_dock()
+
         worker.yielded.connect(self.progress_bar.setValue)
         worker.finished.connect(self._create_pyramid_finished)
         worker.start()
@@ -347,6 +400,7 @@ class StitchingWidget(QWidget):
         self.create_pyramid_button.setEnabled(False)
         self.progress_bar.reset()
         self.progress_bar.setVisible(False)
+        self._deactivate_activity_dock()
 
     def _on_add_tiles_button_clicked(self) -> None:
         """
@@ -369,9 +423,7 @@ class StitchingWidget(QWidget):
             self.resolution_to_display
         )
 
-        worker = create_worker(
-            add_tiles_from_mosaic, napari_data, self.image_mosaic
-        )
+        worker = add_tiles_worker(napari_data, self.image_mosaic)
         worker.yielded.connect(self._set_tile_layers)
         worker.start()
         self.adjust_intensity_button.setEnabled(True)
@@ -453,11 +505,11 @@ class StitchingWidget(QWidget):
             display_info(self, "Warning", error_message)
             return
 
-        worker = create_worker(
-            self.image_mosaic.stitch,
+        worker = stitching_worker(
+            self.image_mosaic,
             self.imagej_path,
             resolution_level=2,
-            selected_channel=self.fuse_channel_dropdown.currentText(),
+            channel=self.fuse_channel_dropdown.currentText(),
         )
 
         self.fuse_button.setEnabled(False)
@@ -465,6 +517,7 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(False)
         self.liner_interpolation_button.setEnabled(False)
         self.reset_preview_button.setEnabled(False)
+        self._activate_activity_dock()
         worker.finished.connect(self._on_stitch_finished)
         worker.start()
 
@@ -481,6 +534,7 @@ class StitchingWidget(QWidget):
         self.adjust_intensity_button.setEnabled(True)
         self.liner_interpolation_button.setEnabled(True)
         self.reset_preview_button.setEnabled(True)
+        self._deactivate_activity_dock()
 
     def _on_adjust_intensity_button_clicked(self):
         if self.image_mosaic.intensity_adjusted[self.resolution_to_display]:
@@ -598,15 +652,23 @@ class StitchingWidget(QWidget):
                 )
                 return
 
-        self.image_mosaic.fuse(
+        worker = fuse_worker(
+            self.image_mosaic,
             output_path,
             normalise_intensity=self.normalise_intensity_toggle.isChecked(),
-            normalise_intensity_percentile=self.percentile_field.value(),
+            percentile=self.percentile_field.value(),
             interpolate=self.interpolate_overlaps_toggle.isChecked(),
         )
+        self._current_output_path = output_path
+        self._activate_activity_dock()
+        worker.finished.connect(self._on_fuse_finished)
+        worker.start()
 
+    def _on_fuse_finished(self):
+        output_path = self._current_output_path
         show_info("Fusing complete")
         display_info(self, "Info", f"Fused image saved to {output_path}")
+        self._deactivate_activity_dock()
 
     def check_imagej_path(self) -> None:
         """
