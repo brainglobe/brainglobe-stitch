@@ -1,3 +1,17 @@
+[![Docs](https://img.shields.io/badge/Docs-brainglobe--stitch-blue)](https://brainglobe.info/documentation/index.html)
+[![Get in Touch](https://img.shields.io/badge/Get%20in%20Touch-BrainGlobe-blue)](https://brainglobe.info/contact.html)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.14001001-green)](https://doi.org/10.5281/zenodo.14001001)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Tests](https://github.com/brainglobe/brainglobe-stitch/actions/workflows/test_and_deploy.yml/badge.svg)](https://github.com/brainglobe/brainglobe-stitch/actions/workflows/test_and_deploy.yml)
+[![Codecov](https://codecov.io/gh/brainglobe/brainglobe-stitch/graph/badge.svg)](https://codecov.io/gh/brainglobe/brainglobe-stitch)
+[![Python Version](https://img.shields.io/pypi/pyversions/brainglobe-stitch.svg)](https://pypi.org/project/brainglobe-stitch)
+[![PyPI](https://img.shields.io/pypi/v/brainglobe-stitch.svg)](https://pypi.org/project/brainglobe-stitch)
+[![Napari Hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/brainglobe-stitch)](https://www.napari-hub.org/plugins/brainglobe-stitch)
+[![Downloads](https://static.pepy.tech/badge/brainglobe-stitch)](https://pepy.tech/project/brainglobe-stitch)
+[![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/format.json)](https://github.com/astral-sh/ruff)
+[![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-green?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-green.svg)](https://brainglobe.info/community/developers/index.html)
+
 # brainglobe-stitch
 
 Stitching tiled 3D light-sheet data in napari
@@ -35,7 +49,6 @@ If you find this package useful, please cite it in your work:
 
 Please also cite the original BigStitcher publication:
 > Hörl, D., Rojas Rusak, F., Preusser, F. *et al.* BigStitcher: reconstructing high-resolution image datasets of cleared and expanded samples. Nat Methods 16, 870–874 (2019). https://doi.org/10.1038/s41592-019-0501-0
-
 
 ## License
 Distributed under the terms of the [BSD-3] license,
