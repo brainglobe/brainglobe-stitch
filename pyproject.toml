@@ -41,7 +41,6 @@ dependencies = [
 "Source Code" = "https://github.com/brainglobe/brainglobe-stitch"
 "User Support" = "https://forum.image.sc/tag/brainglobe"
 
-
 [project.entry-points."napari.manifest"]
 mesospim-stitcher = "brainglobe_stitch:napari.yaml"
 
@@ -53,7 +52,6 @@ dev = [
   "pytest-qt",
   "napari[all]>=0.6.1",
   "coverage",
-  "tox",
   "pooch",
   "black",
   "mypy",
@@ -77,9 +75,8 @@ include-package-data = true
 include = ["brainglobe_stitch*"]
 exclude = ["tests", "docs*"]
 
-
 [tool.pytest.ini_options]
-addopts = "--cov=brainglobe_stitch"
+addopts = "--cov=brainglobe_stitch --cov-report=xml --color=yes -vv"
 
 [tool.black]
 target-version = ['py311', 'py312', 'py313']
@@ -99,37 +96,8 @@ ignore = [
   "docs/source/",
 ]
 
-
 [tool.ruff]
 line-length = 79
 exclude = ["__init__.py","build",".eggs"]
 lint.select = ["I", "E", "F"]
 fix = true
-
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py{311,312,313}, napari-dev
-isolated_build = True
-
-[gh-actions]
-python =
-    3.11: py311
-    3.12: py312
-    3.13: py313
-
-[testenv]
-passenv =
-    CI
-    GITHUB_ACTIONS
-    DISPLAY
-    XAUTHORITY
-    NUMPY_EXPERIMENTAL_ARRAY_FUNCTION
-    PYVISTA_OFF_SCREEN
-extras =
-    dev
-commands =
-    pytest -v --color=yes --cov=brainglobe-stitch --cov-report=xml
-deps =
-    napari-dev: git+https://github.com/napari/napari
-"""
