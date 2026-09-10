@@ -10,7 +10,10 @@ import pytest
 from brainglobe_stitch.image_mosaic import ImageMosaic
 
 TEMP_DIR = Path.home() / "temp_test_directory"
-TEST_DATA_URL = "https://gin.g-node.org/IgorTatarnikov/brainglobe-stitch-test/raw/master/brainglobe-stitch/brainglobe-stitch-test-data.zip"
+TEST_DATA_URL = "https://gin.swc.ucl.ac.uk/brainglobe/test-data/raw/main/brainglobe-stitch/brainglobe-stitch-test-data.zip"
+TEST_DATA_HASH = (
+    "7f9684db81af4210becaaa4b4d59f3f414e4710bac6e6cab1bffdd9624e78952"
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -25,11 +28,22 @@ def download_test_data():
         The path to the temporary directory.
     """
     TEMP_DIR.mkdir(exist_ok=True)
-    pooch.retrieve(
-        TEST_DATA_URL,
-        known_hash="7f9684db81af4210becaaa4b4d59f3f414e4710bac6e6cab1bffdd9624e78952",
-        processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
-    )
+    url = TEST_DATA_URL
+
+    try:
+        pooch.retrieve(
+            url,
+            known_hash=TEST_DATA_HASH,
+            processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
+        )
+    except OSError:
+        # requests' errors (HTTPError, ConnectionError, Timeout) all subclass
+        # OSError; a hash mismatch raises ValueError and is left to propagate.
+        pooch.retrieve(
+            url.replace("https://", "http://"),
+            known_hash=TEST_DATA_HASH,
+            processor=pooch.Unzip(extract_dir=str(TEMP_DIR)),
+        )
 
     yield TEMP_DIR
 
