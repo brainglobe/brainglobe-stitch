@@ -6,11 +6,14 @@ import napari.layers
 import numpy as np
 import pytest
 
-import brainglobe_stitch
 from brainglobe_stitch.image_mosaic import ImageMosaic
 from brainglobe_stitch.stitching_widget import (
     StitchingWidget,
     add_tiles_from_mosaic,
+    add_tiles_worker,
+    create_pyramid_worker,
+    fuse_worker,
+    stitching_worker,
 )
 
 
@@ -33,6 +36,11 @@ def stitching_widget_with_mosaic(
     stitching_widget.image_mosaic.__del__()
 
 
+def test_activity_dock_methods(stitching_widget):
+    stitching_widget._activate_activity_dock()
+    stitching_widget._deactivate_activity_dock()
+
+
 def test_add_tiles_from_mosaic(
     naive_bdv_directory, stitching_widget_with_mosaic
 ):
@@ -52,6 +60,14 @@ def test_add_tiles_from_mosaic(
         assert (tile.translate == data[1]).all()
 
 
+def test_add_tiles_worker(stitching_widget_with_mosaic):
+    image_mosaic = stitching_widget_with_mosaic.image_mosaic
+    napari_data = image_mosaic.data_for_napari(0)
+
+    results = list(add_tiles_worker.__wrapped__(napari_data, image_mosaic))
+    assert len(results) == len(napari_data)
+
+
 def test_stitching_widget_init(make_napari_viewer_proxy):
     """
     Test that the StitchingWidget is correctly initialized with the viewer
@@ -66,6 +82,23 @@ def test_stitching_widget_init(make_napari_viewer_proxy):
     assert stitching_widget.image_mosaic is None
     assert len(stitching_widget.tile_layers) == 0
     assert stitching_widget.resolution_to_display == 3
+
+
+def test_stitching_worker(mocker):
+    mock_mosaic = mocker.Mock()
+
+    result = stitching_worker.__wrapped__(
+        mock_mosaic,
+        Path("imagej"),
+        resolution_level=2,
+        channel="",
+    )
+    mock_mosaic.stitch.assert_called_once_with(
+        Path("imagej"),
+        resolution_level=2,
+        selected_channel="",
+    )
+    assert result is True
 
 
 def test_on_open_file_dialog_clicked(stitching_widget, mocker):
@@ -138,28 +171,28 @@ def test_on_mesospim_directory_text_edited(stitching_widget, mocker):
 
 def test_on_create_pyramid_button_clicked(stitching_widget, mocker):
     """
-    Test that the on_create_pyramid_button_clicked method correctly calls
-    the create_worker function with the correct arguments. The create_worker
-    function is mocked to prevent actually creating the pyramid. The create
-    pyramid button is disabled should be disabled after the method is called
-    and the add_tiles_button should be enabled.
+    Test that clicking the create pyramid button starts the pyramid worker
+    and updates widget state correctly. After the method is called, the
+    create pyramid button should be disabled and the add_tiles_button
+    should be enabled.
     """
     stitching_widget.h5_path = Path.home() / "test_path"
-    mock_create_worker = mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_worker",
-        autospec=True,
-    )
+    mocker.patch("brainglobe_stitch.stitching_widget.create_pyramid_worker")
 
     stitching_widget._on_create_pyramid_button_clicked()
 
-    mock_create_worker.assert_called_once_with(
-        brainglobe_stitch.file_utils.create_pyramid_bdv_h5,
-        stitching_widget.h5_path,
-        yield_progress=True,
-    )
-
     assert not stitching_widget.create_pyramid_button.isEnabled()
     assert stitching_widget.add_tiles_button.isEnabled()
+
+
+def test_create_pyramid_worker(mocker):
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.create_pyramid_bdv_h5",
+        return_value=[10, 50, 100],
+    )
+
+    result = list(create_pyramid_worker.__wrapped__(Path("dummy.h5")))
+    assert result == [10, 50, 100]
 
 
 def test_on_add_tiles_button_clicked(
@@ -173,14 +206,9 @@ def test_on_add_tiles_button_clicked(
     """
     stitching_widget.working_directory = naive_bdv_directory
 
-    mock_create_worker = mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_worker",
-        autospec=True,
-    )
+    mocker.patch("brainglobe_stitch.stitching_widget.add_tiles_worker")
 
     stitching_widget._on_add_tiles_button_clicked()
-
-    mock_create_worker.assert_called_once()
 
     assert stitching_widget.image_mosaic is not None
 
@@ -376,19 +404,22 @@ def test_on_stitch_button_clicked(
     stitching_widget = stitching_widget_with_mosaic
     stitching_widget.imagej_path = test_constants["MOCK_IMAGEJ_EXEC_PATH"]
 
-    mock_create_worker = mocker.patch(
-        "brainglobe_stitch.stitching_widget.create_worker",
-        autospec=True,
+    mock_worker_instance = mocker.Mock()
+    mock_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.stitching_worker",
+        return_value=mock_worker_instance,
     )
 
     stitching_widget._on_stitch_button_clicked()
 
-    mock_create_worker.assert_called_once_with(
-        stitching_widget_with_mosaic.image_mosaic.stitch,
+    mock_worker.assert_called_once_with(
+        stitching_widget.image_mosaic,
         stitching_widget.imagej_path,
         resolution_level=2,
-        selected_channel="",
+        channel="",
     )
+
+    mock_worker_instance.start.assert_called_once()
 
 
 def test_on_stitch_button_clicked_no_image_mosaic(
@@ -461,7 +492,7 @@ def test_on_stitch_finished(stitching_widget_with_mosaic, mocker):
     assert stitching_widget_with_mosaic.liner_interpolation_button.isEnabled()
 
 
-def tests_on_adjust_intensity_button_clicked(
+def test_on_adjust_intensity_button_clicked(
     stitching_widget_with_mosaic, mocker
 ):
     """
@@ -652,15 +683,15 @@ def test_on_open_dialog_output_clicked_cancelled(stitching_widget, mocker):
 def test_on_fuse_button_clicked(
     stitching_widget_with_mosaic, mocker, file_name
 ):
-    mock_display_info = mocker.patch(
-        "brainglobe_stitch.stitching_widget.display_info",
-        autospec=True,
-    )
     stitching_widget = stitching_widget_with_mosaic
 
-    mock_fuse = mocker.patch(
-        "brainglobe_stitch.stitching_widget.ImageMosaic.fuse",
-        autospec=True,
+    mock_worker_instance = mocker.Mock()
+    mock_worker_instance.finished = mocker.Mock()
+    mock_worker_instance.start = mocker.Mock()
+
+    mock_fuse_worker = mocker.patch(
+        "brainglobe_stitch.stitching_widget.fuse_worker",
+        return_value=mock_worker_instance,
     )
 
     output_path = stitching_widget.working_directory / file_name
@@ -668,19 +699,34 @@ def test_on_fuse_button_clicked(
 
     stitching_widget._on_fuse_button_clicked()
 
-    mock_fuse.assert_called_once_with(
+    mock_fuse_worker.assert_called_once_with(
         stitching_widget.image_mosaic,
         output_path,
         normalise_intensity=False,
-        normalise_intensity_percentile=80,
+        percentile=80,
         interpolate=False,
     )
-    mock_display_info.assert_called_once_with(
-        stitching_widget,
-        "Info",
-        f"Fused image saved to "
-        f"{stitching_widget.working_directory / file_name}",
+
+    mock_worker_instance.start.assert_called_once()
+
+    assert stitching_widget._current_output_path == output_path
+
+
+def test_on_fuse_finished(stitching_widget_with_mosaic, mocker):
+    mock_show_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_info"
     )
+    mock_display_info = mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_info",
+        autospec=True,
+    )
+
+    stitching_widget_with_mosaic._current_output_path = Path("test.h5")
+
+    stitching_widget_with_mosaic._on_fuse_finished()
+
+    mock_show_info.assert_called_once_with("Fusing complete")
+    mock_display_info.assert_called_once()
 
 
 def test_on_fuse_button_clicked_no_file_name(
@@ -731,6 +777,72 @@ def test_on_fuse_button_clicked_wrong_suffix(
     mock_display_info.assert_called_once_with(
         stitching_widget, "Warning", error_message
     )
+
+
+def test_fuse_worker(mocker):
+    mock_mosaic = mocker.Mock()
+
+    result = fuse_worker.__wrapped__(
+        mock_mosaic,
+        Path("output.h5"),
+        normalise_intensity=True,
+        percentile=90,
+        interpolate=True,
+    )
+    mock_mosaic.fuse.assert_called_once_with(
+        Path("output.h5"),
+        normalise_intensity=True,
+        normalise_intensity_percentile=90,
+        interpolate=True,
+    )
+    assert result is True
+
+
+def test_on_fuse_button_overwrite_confirm(
+    stitching_widget_with_mosaic, mocker, tmp_path
+):
+    stitching_widget = stitching_widget_with_mosaic
+
+    output_path = tmp_path / "existing.h5"
+    output_path.touch()
+    stitching_widget.select_output_path_text_field.setText(str(output_path))
+
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_warning",
+        return_value=True,
+    )
+    mock_worker_instance = mocker.Mock()
+    mock_worker_instance.finished = mocker.Mock()
+    mock_worker_instance.start = mocker.Mock()
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.fuse_worker",
+        return_value=mock_worker_instance,
+    )
+
+    stitching_widget._on_fuse_button_clicked()
+    assert not output_path.exists()
+
+
+def test_on_fuse_button_overwrite_cancel(
+    stitching_widget_with_mosaic, mocker, tmp_path
+):
+    stitching_widget = stitching_widget_with_mosaic
+
+    output_path = tmp_path / "existing.h5"
+    output_path.touch()
+    stitching_widget.select_output_path_text_field.setText(str(output_path))
+
+    mocker.patch(
+        "brainglobe_stitch.stitching_widget.display_warning",
+        return_value=False,
+    )
+    mock_show_warning = mocker.patch(
+        "brainglobe_stitch.stitching_widget.show_warning"
+    )
+
+    stitching_widget._on_fuse_button_clicked()
+    mock_show_warning.assert_called_once()
+    assert output_path.exists()
 
 
 def test_on_reset_preview_button_clicked_no_change(
